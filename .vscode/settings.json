@@ -1,0 +1,17 @@
+{
+    "[lua]": {
+        "editor.defaultFormatter": "JohnnyMorganz.stylua",
+        "editor.formatOnSave": true
+    },
+    "robloxLsp.diagnostics.disable": [
+        "undefined-type"
+    ],
+    "robloxLsp.diagnostics.globals": [
+        "player",
+        "amount",
+        "Managere",
+        "endupdaupdateMoney",
+        "updaupdateMoney"
+    ]
+
+}
