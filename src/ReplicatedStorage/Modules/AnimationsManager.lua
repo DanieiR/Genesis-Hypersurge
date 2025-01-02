@@ -20,7 +20,7 @@ function AnimationManager:LoadAnimations(character, animations)
 		local animation = Instance.new("Animation")
 		animation.AnimationId = "rbxassetid://" .. animId
 		local track = animator:LoadAnimation(animation)
-		if animName:sub(-4) == "Idle" then
+		if animName:sub(-4) == "Idle" or animName:sub(-5) == "Equip" then
 			track.Priority = Enum.AnimationPriority.Action
 		end
 		self.LoadedAnimations[character][animName] = track

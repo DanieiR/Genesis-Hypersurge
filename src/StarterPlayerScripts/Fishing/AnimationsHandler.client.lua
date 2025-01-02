@@ -2,7 +2,7 @@
 This script will handle all the Fishing animations for the client.
 Author: Dan_iDev
 Date Created: 12/31/2024
-Date Modified: 12/31/2024
+Date Modified: 1/1/2024
 ]]
 
 -- Services
@@ -28,11 +28,7 @@ local animations = {
 -- Function to handle tool equipping
 local function onToolEquipped(tool)
 	if tool.Name:sub(-3) == "Rod" then
-		local equipTrack = AnimationManager:PlayAnimation(character, "FishingRod_Equip", false, 0.2)
-		if equipTrack then
-			equipTrack.Ended:Wait()
-			AnimationManager:PlayAnimation(character, "FishingRod_EquipIdle", true)
-		end
+		AnimationManager:PlayAnimation(character, "FishingRod_EquipIdle", true)
 	end
 end
 
