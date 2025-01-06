@@ -2,7 +2,7 @@
 This script will handle all the Fishing animations for the client.
 Author: Dan_iDev
 Date Created: 12/31/2024
-Date Modified: 1/1/2024
+Date Modified: 1/3/2024
 ]]
 
 -- Services
@@ -23,11 +23,14 @@ local animations = {
 	["FishingRod_Throw"] = 79780231544605,
 	["FishingRod_Hold"] = 123045284933073,
 	["FishingRod_Idle"] = 91317673046419,
+	["FishingRod_Catch"] = 134968993757108,
 }
 
 -- Function to handle tool equipping
 local function onToolEquipped(tool)
 	if tool.Name:sub(-3) == "Rod" then
+		AnimationManager:PlayAnimation(character, "FishingRod_Equip")
+		task.wait(0.3)
 		AnimationManager:PlayAnimation(character, "FishingRod_EquipIdle", true)
 	end
 end

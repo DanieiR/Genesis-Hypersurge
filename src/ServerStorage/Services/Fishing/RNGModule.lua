@@ -4,9 +4,9 @@ local FishRNG = {}
 function FishRNG.GetRandomFish(hasGamepass)
 	-- Define the fish with their base odds (1 in X)
 	local fishes = {
-		{ fish = "Rare Fish", odds = 10 }, -- 1 in 10 chance
-		{ fish = "Normal Fish", odds = 5 }, -- 1 in 5 chance
-		{ fish = "Basic Fish", odds = 1 }, -- Guaranteed
+		{ fish = "Fish", odds = 10 }, -- 1 in 10 chance
+		{ fish = "Fish", odds = 5 }, -- 1 in 5 chance
+		{ fish = "Fish", odds = 1 }, -- Guaranteed
 	}
 
 	-- Adjust odds if the player has the gamepass if gamepasses are added in the future (x2 chance of getting rarer fish)
@@ -17,7 +17,7 @@ function FishRNG.GetRandomFish(hasGamepass)
 		end
 	end
 
-	-- Iterate over the crowns
+	-- Iterate over the fishes
 	for _, item in ipairs(fishes) do
 		local odds = item.odds
 		local randomValue = math.random(1, odds)

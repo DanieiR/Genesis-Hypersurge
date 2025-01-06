@@ -6,7 +6,14 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local AnimationManager = {}
 AnimationManager.LoadedAnimations = {}
+local function isRodEquipped(Character)
+	local equippedTool = Character:FindFirstChildOfClass("Tool")
+	if equippedTool and equippedTool.Name:sub(-3) == "Rod" then
+		return true
+	end
 
+	return false
+end
 -- Function to preload animations for a specific character
 function AnimationManager:LoadAnimations(character, animations)
 	local humanoid = character:WaitForChild("Humanoid")
@@ -30,6 +37,12 @@ end
 
 -- Function to play an animation
 function AnimationManager:PlayAnimation(character, animationName, loop, fadeTime)
+	local hasEquippedRod = isRodEquipped(character)
+
+	if not hasEquippedRod then
+		return
+	end
+
 	local animationTrack = self:GetAnimationTrack(character, animationName)
 
 	if animationTrack then
