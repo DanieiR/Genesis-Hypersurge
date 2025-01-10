@@ -24,6 +24,7 @@ local animations = {
 	["FishingRod_Hold"] = 123045284933073,
 	["FishingRod_Idle"] = 91317673046419,
 	["FishingRod_Catch"] = 134968993757108,
+	["FishingRod_Reel"] = 123864382311991,
 }
 
 -- Function to handle tool equipping

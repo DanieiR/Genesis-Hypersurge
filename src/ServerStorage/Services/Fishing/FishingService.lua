@@ -2,11 +2,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace") -- Add Workspace service
-
+local SoundService = game:GetService("SoundService")
 local Knit = require(ReplicatedStorage.Packages.Knit)
 local Manager = require(ServerStorage.Source.Manager)
 local RNGModule = require(ServerStorage.Source.Services.Fishing.RNGModule)
 local CurrentBobber
+local fishingSFX = SoundService["Sound Effects"].Fishing
 local FishingService = Knit.CreateService({
 	Name = "FishingService",
 	Client = {
@@ -14,6 +15,7 @@ local FishingService = Knit.CreateService({
 		NoWater = Knit.CreateSignal(),
 		FishCaught = Knit.CreateSignal(),
 		Cleanup = Knit.CreateSignal(),
+		FishingSuccess = Knit.CreateSignal(),
 	},
 })
 
@@ -28,6 +30,9 @@ function FishingService:StartFishing(player)
 	print("Caught fish:", caughtFish)
 	task.wait(WAIT_TIME)
 	self.Client.FishCaught:Fire(player, caughtFish) -- Signal that a fish has been caught
+	self.Client.FishingSuccess:Connect(function(player, success)
+		Manager.AdjustFishes(player, caughtFish)
+	end)
 end
 function FishingService:AttachBobberToLine(Player)
 	local character = Player.Character
@@ -68,6 +73,7 @@ function FishingService:AttachBobberToLine(Player)
 	bobberAttachment.Parent = bobberModel.PrimaryPart
 	bobberAttachment.WorldPosition = bobberModel.PrimaryPart.Position
 
+	fishingSFX.ThrowRod2:Play()
 	-- Connect the rope to the bobber
 	rope.Attachment1 = bobberAttachment
 
@@ -98,8 +104,10 @@ function FishingService:AttachBobberToLine(Player)
 		if raycastResult then
 			-- Bobber is above water, stop increasing rope length
 			-- Simulate fishing process here
+			fishingSFX.BobberLands:Play()
 			print("Fishing started for player:", Player.Name)
 			self:StartFishing(Player)
+			bobberModel.Bottom.Attachment.splash.Enabled = true
 			break
 		else
 			-- Bobber is not above water, increase rope length
@@ -122,15 +130,17 @@ end
 function FishingService:Main(player)
 	self:AttachBobberToLine(player)
 end
-function FishingService:PerformCleanup(player)
-	CurrentBobber:Destroy()
+function FishingService:PerformCleanup(player, success)
+	if CurrentBobber then
+		CurrentBobber:Destroy()
+	end
 end
 
 function FishingService:KnitStart()
 	self.Client.FishingStarted:Connect(function(player)
 		self:Main(player)
 	end)
-	self.Client.Cleanup:Connect(function(player)
+	self.Client.Cleanup:Connect(function(player, success)
 		self:PerformCleanup(player)
 	end)
 end
