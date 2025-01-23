@@ -57,7 +57,7 @@ local function connectButtons()
 end
 
 function start()
-	task.wait(7)
+	task.wait(3)
 	connectButtons()
 end
 

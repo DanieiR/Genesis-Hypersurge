@@ -3,6 +3,7 @@ local ServerStorage = game:GetService("ServerStorage")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace") -- Add Workspace service
 local SoundService = game:GetService("SoundService")
+local TweenService = game:GetService("TweenService")
 local Knit = require(ReplicatedStorage.Packages.Knit)
 local Manager = require(ServerStorage.Source.Manager)
 local RNGModule = require(ServerStorage.Source.Services.Fishing.RNGModule)
@@ -16,6 +17,7 @@ local FishingService = Knit.CreateService({
 		FishCaught = Knit.CreateSignal(),
 		Cleanup = Knit.CreateSignal(),
 		FishingSuccess = Knit.CreateSignal(),
+		ThrowBobber = Knit.CreateSignal(),
 	},
 })
 
@@ -37,12 +39,14 @@ end
 function FishingService:AttachBobberToLine(Player)
 	local character = Player.Character
 	local rod = character:FindFirstChildWhichIsA("Tool")
+
 	if not rod then
 		warn("Rod not found in character")
 		return
 	end
 
 	local line = rod:FindFirstChild("Handle"):FindFirstChild("Line")
+
 	if not line then
 		warn("Line not found in rod")
 		return
@@ -60,73 +64,106 @@ function FishingService:AttachBobberToLine(Player)
 	-- Clone the bobber model
 	local bobberModel = ReplicatedStorage:FindFirstChild("Bobbers").Bobber:Clone()
 	CurrentBobber = bobberModel
+
 	if not bobberModel then
 		warn("Bobber model not found in ReplicatedStorage")
 		return
 	end
+
 	bobberModel.Parent = rod
-	bobberModel:SetPrimaryPartCFrame(attachment1.WorldCFrame + Vector3.new(0, 1, 3))
+	bobberModel:SetPrimaryPartCFrame(attachment1.WorldCFrame + Vector3.new(0, 3, 10))
 
 	-- Create an attachment on the bobber for the rope
 	local bobberAttachment = Instance.new("Attachment")
 	bobberAttachment.Name = "BobberAttachment"
 	bobberAttachment.Parent = bobberModel.PrimaryPart
 	bobberAttachment.WorldPosition = bobberModel.PrimaryPart.Position
-
 	fishingSFX.ThrowRod2:Play()
-	-- Connect the rope to the bobber
-	rope.Attachment1 = bobberAttachment
 
-	-- Apply initial forward force
-	local rodTipWorldPosition = attachment0.WorldPosition
-	local bobberPosition = bobberModel.PrimaryPart.Position
-	local direction = (rodTipWorldPosition - bobberPosition).Unit
-	local forwardForce = 50 -- Adjust this value
-	bobberModel.PrimaryPart:ApplyImpulse(direction * forwardForce)
+	-- Create a dummy part for visual rope extension
+	local dummyPart = Instance.new("Part")
+	dummyPart.Size = Vector3.new(1, 1, 1)
+	dummyPart.Transparency = 1
+	dummyPart.CanCollide = false
+	dummyPart.Anchored = true
+	dummyPart.Parent = workspace
+	dummyPart.Position = attachment0.WorldPosition
 
-	-- Adjust rope length until the bobber hits water
-	local raycastParams = RaycastParams.new()
-	raycastParams.FilterType = Enum.RaycastFilterType.Whitelist
-	raycastParams.FilterDescendantsInstances = { Workspace.Terrain }
+	-- Create an attachment on the dummy part
+	local dummyAttachment = Instance.new("Attachment")
+	dummyAttachment.Name = "DummyAttachment"
+	dummyAttachment.Parent = dummyPart
 
-	local maxRopeLength = 20 -- Maximum length the rope can extend to
-	local ropeLengthIncrement = 0.5 -- How much to increase rope length each step
-	local currentRopeLength = 0
+	-- Connect the rope to the dummy attachment initially
+	rope.Attachment1 = dummyAttachment
 
-	while currentRopeLength < maxRopeLength do
-		rope.Length = currentRopeLength
-		task.wait()
+	--Use the quadratic bezier curve formula to calculate the trajectory of the bobber
+	--(1-t)^2 * P0 + 2 * (1-t) * t * P1 + t^2 * P2
+	--Very smooth!
+	local StartPos = attachment0.WorldPosition
+	local EndPoint = character.HumanoidRootPart.CFrame * CFrame.new(0, -10, -30)
+	local MidPoint = (StartPos + EndPoint.Position) / 2 + Vector3.new(0, 30, 0)
 
-		local rayOrigin = bobberAttachment.WorldPosition
-		local rayDirection = Vector3.new(0, -1, 0) -- Cast ray downwards
+	local bobberLanded = false
+	bobberModel.PrimaryPart.Anchored = true
+	character.HumanoidRootPart.Anchored = true
+	rope.Length = 2
+	self.Client.ThrowBobber:Fire(Player)
+	for Index = 0, 100, 1.5 do
+		local t = Index / 100
+		local l1 = StartPos:Lerp(MidPoint, t)
+		local l2 = MidPoint:Lerp(EndPoint.Position, t)
+
+		local quad = l1:Lerp(l2, t)
+
+		-- Move the dummy part along the trajectory
+		dummyPart.Position = quad
+		rope.Length = (attachment0.WorldPosition - dummyAttachment.WorldPosition).Magnitude
+
+		local raycastParams = RaycastParams.new()
+		raycastParams.FilterType = Enum.RaycastFilterType.Whitelist
+		raycastParams.FilterDescendantsInstances = { Workspace.Terrain }
+
+		local rayOrigin = quad
+		local rayDirection = Vector3.new(0, -1, 0)
 		local raycastResult = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-
-		if raycastResult then
-			-- Bobber is above water, stop increasing rope length
-			-- Simulate fishing process here
-			fishingSFX.BobberLands:Play()
-			print("Fishing started for player:", Player.Name)
-			self:StartFishing(Player)
-			bobberModel.Bottom.Attachment.splash.Enabled = true
+		if raycastResult and raycastResult.Instance.Name == "Terrain" then
+			bobberModel.PrimaryPart.Anchored = false
+			bobberLanded = true
+			local waterHitPosition = raycastResult.Position
+			local aboveWaterPosition = waterHitPosition + Vector3.new(0, 1, 0) -- 1 stud above the water
+			bobberModel:PivotTo(CFrame.new(aboveWaterPosition))
+			for _, part in ipairs(bobberModel:GetChildren()) do
+				if part:IsA("BasePart") then
+					part.Massless = false
+				end
+			end
+			character.HumanoidRootPart.Anchored = false
 			break
-		else
-			-- Bobber is not above water, increase rope length
-			currentRopeLength = currentRopeLength + ropeLengthIncrement
 		end
-	end
 
-	if currentRopeLength >= maxRopeLength then
+		bobberModel:PivotTo(CFrame.new(quad))
+		task.wait()
+	end
+	bobberModel.PrimaryPart.Anchored = false
+	character.HumanoidRootPart.Anchored = false
+	if bobberLanded then
+		-- Connect the rope to the actual bobber attachment
+		rope.Attachment1 = bobberAttachment
+		rope.Length = (attachment0.WorldPosition - bobberAttachment.WorldPosition).Magnitude
+
+		-- Bobber is above water
+		fishingSFX.BobberLands:Play()
+		print("Fishing started for player:", Player.Name)
+		self:StartFishing(Player)
+		bobberModel.Top.Attachment.splash.Enabled = true
+	else
 		warn("Bobber did not reach water within the maximum rope length")
 		bobberModel:Destroy()
 		self.Client.NoWater:Fire(Player)
 	end
-
-	local weld = Instance.new("WeldConstraint")
-	weld.Part0 = bobberModel.PrimaryPart
-	weld.Part1 = attachment1.Parent
-	weld.Parent = weld.Part0
+	dummyPart:Destroy()
 end
-
 function FishingService:Main(player)
 	self:AttachBobberToLine(player)
 end

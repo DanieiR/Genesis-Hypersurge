@@ -13,6 +13,7 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 local GuiService = game:GetService("GuiService")
+local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
 -- Modules
 
@@ -42,8 +43,11 @@ local MainFrame = nil
 local ReelFrame = nil
 local GreenBar = nil
 local RedBar = nil
-local Bar = nil
+local MultiplierText = nil
 local Spam = nil
+local GreenBarConnection = nil
+local RedBarConnection = nil
+local heartbeatConnection = nil
 local minigameGui = nil
 local clickedDuringExclamation = false
 local clickConnection
@@ -54,6 +58,12 @@ function animateToMax()
 	end
 	currentTween = TweenService:Create(Bar, tweenInfoForward, { Size = UDim2.new(1, 0, 2, 0) })
 	currentTween:Play()
+
+	currentTween.Completed:Connect(function()
+		if isAnimating then
+			animateToMin() -- Start animating back to minimum when it reaches the maximum
+		end
+	end)
 end
 
 function animateToMin()
@@ -62,17 +72,48 @@ function animateToMin()
 	end
 	currentTween = TweenService:Create(Bar, tweenInfoBackward, { Size = UDim2.new(1, 0, 0.1, 0) })
 	currentTween:Play()
+
+	currentTween.Completed:Connect(function()
+		if isAnimating then
+			animateToMax() -- Start animating back to maximum when it reaches the minimum
+		end
+	end)
 end
 
 local function startPowerBarAnimation()
 	isAnimating = true
 	animateToMax()
-end
 
+	-- Update Multiplier text and color using RunService.Heartbeat
+	if not heartbeatConnection then
+		heartbeatConnection = RunService.Heartbeat:Connect(function()
+			if currentCastingUI and MultiplierText and Bar then
+				local currentYScale = Bar.Size.Y.Scale
+				MultiplierText.Text = string.format("x%.1f", currentYScale / 2 * 10)
+				-- Update MultiplierText color based on Bar's Y scale
+				if currentYScale > 1.8 then
+					MultiplierText.TextColor3 = Color3.fromRGB(0, 255, 0)
+				elseif currentYScale > 1.2 then
+					MultiplierText.TextColor3 = Color3.fromRGB(0, 68, 255)
+				elseif currentYScale > 0.6 then
+					MultiplierText.TextColor3 = Color3.fromRGB(255, 255, 0)
+				else
+					MultiplierText.TextColor3 = Color3.fromRGB(255, 0, 0)
+				end
+			end
+		end)
+	end
+end
 local function stopPowerBarAnimation()
 	isAnimating = false
 	if currentTween then
 		currentTween:Cancel()
+	end
+
+	-- Disconnect Heartbeat connection
+	if heartbeatConnection then
+		heartbeatConnection:Disconnect()
+		heartbeatConnection = nil
 	end
 end
 
@@ -104,7 +145,14 @@ local function resetState()
 		Bar = nil -- Ensure Bar is also reset
 		print("Destroyed currentCastingUI.") -- Debug print
 	end
-
+	if GreenBarConnection then
+		GreenBarConnection:Disconnect()
+		GreenBarConnection = nil
+	end
+	if RedBarConnection then
+		RedBarConnection:Disconnect()
+		RedBarConnection = nil
+	end
 	-- Destroy the minigame UI
 	if minigameGui and minigameGui.Parent then
 		minigameGui:Destroy()
@@ -130,6 +178,14 @@ local function resetState()
 end
 
 local function PlayCatchAnimation(caughtFish)
+	if GreenBarConnection then
+		GreenBarConnection:Disconnect()
+		GreenBarConnection = nil
+	end
+	if RedBarConnection then
+		RedBarConnection:Disconnect()
+		RedBarConnection = nil
+	end
 	local caughtFishModel = ReplicatedStorage.Fishes:FindFirstChild(caughtFish)
 	if not caughtFishModel then
 		warn("Fish model not found:", caughtFish)
@@ -156,7 +212,7 @@ local function PlayCatchAnimation(caughtFish)
 	-- Clone the fish model for the impulse effect
 	local clonedFishImpulse = caughtFishModel:Clone()
 	clonedFishImpulse.Parent = Workspace
-	clonedFishImpulse:SetPrimaryPartCFrame(bobber.PrimaryPart.CFrame + Vector3.new(0, 1, 3))
+	clonedFishImpulse:SetPrimaryPartCFrame(bobber.Top.CFrame + Vector3.new(0, 1, 3))
 
 	-- Calculate impulse direction
 	local direction = (rootPart.Position + Vector3.new(0, 1, 0) - clonedFishImpulse.PrimaryPart.Position).Unit
@@ -164,7 +220,7 @@ local function PlayCatchAnimation(caughtFish)
 
 	-- Apply impulse
 	clonedFishImpulse.PrimaryPart:ApplyImpulse(direction * impulseForce)
-
+	fishingSFX.FishShow:Play()
 	-- Clone the fish model for the left hand
 	local clonedFishHand = caughtFishModel:Clone()
 	clonedFishHand.Parent = Workspace
@@ -271,6 +327,14 @@ local function PlayCatchAnimation(caughtFish)
 end
 
 local function onMinigameFailed()
+	if GreenBarConnection then
+		GreenBarConnection:Disconnect()
+		GreenBarConnection = nil
+	end
+	if RedBarConnection then
+		RedBarConnection:Disconnect()
+		RedBarConnection = nil
+	end
 	fishingSFX.Lose_Minigame:Play()
 	FishingService = Knit.GetService("FishingService")
 	FishingService.Cleanup:Fire(false)
@@ -330,12 +394,17 @@ local function startSecondMinigame(caughtFish)
 	RedBar = ReelFrame:WaitForChild("Bar"):WaitForChild("RedBar")
 	Bar = ReelFrame:WaitForChild("Bar")
 	Spam = ReelFrame:WaitForChild("Spam")
+	local YankAmountsFrame = ReelFrame:WaitForChild("YankAmounts")
+	local isHolding = false
+	local spamConnection = nil
+	local requiredSpamCount = 5 -- Number of clicks needed at each yank point
+	local spamCount = 0
+	local isSpamming = false
 
-	-- Hide the first minigame's UI
 	MainFrame.Clicking.Visible = false
 
 	-- Show the second minigame's UI
-	ReelFrame.Visible = true
+	ReelFrame.Visible = false
 	MainFrame.Visible = true
 
 	-- Set AnchorPoint for GreenBar
@@ -344,20 +413,35 @@ local function startSecondMinigame(caughtFish)
 	RedBar.AnchorPoint = Vector2.new(0.5, 0.05)
 	RedBar.Position = UDim2.new(0.5, 0, 0, 0)
 
-	-- Configuration
-	local greenBarTweenTime = 2 -- Time it takes for the green bar to tween to a yank point
-	local redBarRiseSpeed = 0.015 -- Speed at which the red bar rises (now per iteration)
 	local yankPointIndex = 1
 	local yankPoints = {
 		0.288, -- First Yank Point (Y scale)
 		0.556, -- Second Yank Point (Y scale)
 		0.823, -- Third Yank Point (Y scale)
-		1.047, -- Complete (Y scale)
+		--1.047, -- Complete (Y scale)
 	}
-	local requiredSpamCount = 5 -- Number of clicks needed at each yank point
-	local spamCount = 0
-	local isSpamming = false
 
+	for _, TextLabel in ipairs(YankAmountsFrame:GetDescendants()) do
+		if TextLabel:IsA("TextLabel") then
+			TextLabel.Text = tostring(requiredSpamCount)
+		end
+	end
+	--Initally tween the ReelFrame to its original position after moving it off-screen
+	-- Store original position of ReelFrame and move it off-screen
+	local originalReelFramePosition = ReelFrame.Position
+	ReelFrame.Position = UDim2.new(1, 5, 0.5, 0) -- Example: Move it off-screen to the right
+	ReelFrame.Visible = true
+	-- Tween the ReelFrame to its original position
+	local reelFrameTweenInfo = TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local reelFrameTween = TweenService:Create(ReelFrame, reelFrameTweenInfo, { Position = originalReelFramePosition })
+	reelFrameTween:Play()
+	ReelFrame.CountDown.Visible = true
+	local countDownText = ReelFrame.CountDown.CountDownText
+	for i = 1, 3, 1 do
+		countDownText.Text = tostring(4 - i)
+		task.wait(1)
+	end
+	ReelFrame.CountDown.Visible = false
 	-- Make RedBar visible initially, no need to change its size
 	RedBar.Visible = true
 
@@ -370,6 +454,8 @@ local function startSecondMinigame(caughtFish)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
 			if isSpamming then
 				spamCount = spamCount + 1
+				local currenTextLabel = YankAmountsFrame:FindFirstChild(tostring(yankPointIndex))
+				currenTextLabel.NumberText.Text = tostring(requiredSpamCount - spamCount)
 				-- Visual effect: Tilt the Spam ImageLabel
 				Spam.Rotation = 10 -- Tilt to the right (in degrees)
 
@@ -396,74 +482,83 @@ local function startSecondMinigame(caughtFish)
 	local function waitForSpamming()
 		isSpamming = true
 		Spam.Visible = true
+		spamConnection = UserInputService.InputBegan:Connect(onSpamInput)
+	end
 
-		-- Connect spam input listener
-		local spamConnection = UserInputService.InputBegan:Connect(onSpamInput)
+	-- Function to handle mouse button input
+	local function onInputBegan(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			isHolding = true
+		end
+	end
 
-		-- Wait until spamming is done or red bar reaches the top
-		while isSpamming and minigameGui and minigameGui.Parent do
-			-- Update red bar position
+	local function onInputEnded(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			isHolding = false
+		end
+	end
+
+	UserInputService.InputBegan:Connect(onInputBegan)
+	UserInputService.InputEnded:Connect(onInputEnded)
+
+	-- Function to tween the green bar's SIZE to the next yank point
+	function tweenGreenBarToNextYankPoint()
+		if spamConnection then
+			spamConnection:Disconnect()
+		end
+		while minigameGui and minigameGui.Parent do
+			if isHolding then
+				local greenBarRiseSpeed = 0.02
+				local newGreenBarY = GreenBar.Size.Y.Scale + greenBarRiseSpeed
+				GreenBar.Size = UDim2.new(1, 0, newGreenBarY, 0)
+
+				if newGreenBarY >= 1.047 then
+					minigameGui:Destroy()
+					fishingSFX.FishingReel_Minigame:Stop()
+					PlayCatchAnimation(caughtFish)
+					return
+				end
+				if yankPoints[yankPointIndex] and newGreenBarY >= yankPoints[yankPointIndex] then
+					waitForSpamming()
+					break
+				end
+			end
+
+			task.wait(0.2)
+		end
+	end
+	local function tweenRedBarToNextYankPoint()
+		while minigameGui and minigameGui.Parent do
+			local redBarRiseSpeed = 0.005
 			local newRedBarY = RedBar.Size.Y.Scale + redBarRiseSpeed
 			RedBar.Size = UDim2.new(1, 0, newRedBarY, 0)
 			-- Check if red bars size is greater than green bar
 			if newRedBarY >= GreenBar.Size.Y.Scale then
-				print("Minigame failed! Red bar reached the top.")
 				minigameGui:Destroy()
 				fishingSFX.FishingReel_Minigame:Stop()
 				onMinigameFailed()
-				spamConnection:Disconnect() -- Disconnect spam input listener
 				return
 			end
-
-			task.wait(0.1)
+			task.wait(0.2)
 		end
-
-		-- Disconnect spam input listener
-		spamConnection:Disconnect()
 	end
 
-	-- Function to tween the green bar's SIZE to the next yank point
-	function tweenGreenBarToNextYankPoint()
-		if yankPointIndex > #yankPoints then
-			print("All yank points cleared!")
-			minigameGui:Destroy()
-			fishingSFX.FishingReel_Minigame:Stop()
-			PlayCatchAnimation(caughtFish)
-			return -- End the minigame here for now
-		end
-
-		local nextYankPointScale = yankPoints[yankPointIndex]
-
-		-- Tween the GreenBar's SIZE to the next yank point
-		local tweenInfo = TweenInfo.new(greenBarTweenTime, Enum.EasingStyle.Linear)
-		local tween = TweenService:Create(
-			GreenBar,
-			tweenInfo,
-			{ Size = UDim2.new(GreenBar.Size.X.Scale, 0, nextYankPointScale, 0) } -- Only change the Size
-		)
-		tween:Play()
-
-		tween.Completed:Connect(function(playbackState)
-			if playbackState == Enum.PlaybackState.Completed then
-				-- Yank point reached, wait for spamming
-				fishingSFX.HeartBeat_Minigame:Play()
-				waitForSpamming()
-			end
-		end)
-	end
-
-	-- Start the red bar rising and the green bar tweening
 	local function startMinigame()
 		-- Start tweening the green bar
-		tweenGreenBarToNextYankPoint()
+		task.spawn(function()
+			GreenBarConnection = tweenGreenBarToNextYankPoint()
+		end)
 
-		-- The red bar rising is handled inside waitForSpamming()
+		task.spawn(function()
+			RedBarConnection = tweenRedBarToNextYankPoint()
+		end)
 	end
-
-	-- Start the minigame
 	startMinigame()
 end
+
 local function spawnFirstMinigame(caughtFish)
+	local minigameRunning = true -- Flag to indicate if the minigame is running
+	local minigameDelay = nil -- Variable to hold the task.delay coroutine
 	if not isRodEquipped() then
 		resetState()
 		return
@@ -479,16 +574,21 @@ local function spawnFirstMinigame(caughtFish)
 
 	local minigameFrame = minigameGui:WaitForChild("Main"):WaitForChild("Clicking")
 
-	-- Get the button size from the TEMPLATE (before cloning)
-	local buttonSize = clickButtonForMinigame.AbsoluteSize
+	-- Get the button's and icon's original sizes and positions (from the TEMPLATE before cloning)
+	local originalButtonSize = clickButtonForMinigame.Size
+	local originalButtonPosition = clickButtonForMinigame.Position
+	local originalIconSize = clickButtonForMinigame.Icon.Size
+	local originalIconPosition = clickButtonForMinigame.Icon.Position
 
 	-- Configuration
-	local numButtons = 5 -- Total number of buttons to spawn (not all at once)
-	local minigameDuration = 5 -- Seconds the minigame lasts
-	local buttonSpawnInterval = 1 -- Seconds between each button spawn
+	local numButtons = 10 -- Total number of buttons to spawn
+
+	local buttonSpawnInterval = 0.5
+	local minigameDuration = numButtons * buttonSpawnInterval -- Seconds the minigame lasts
 	local successCount = 0
 	local neededSuccessCount = 5 -- Number of buttons to click successfully
-	local currentButton = nil -- Keep track of the currently active button
+	local currentButtons = {}
+	local tweenDuration = 1 -- Adjust the duration of the tween as needed
 
 	-- Function to get a random position within the middle area (halved Clicking frame)
 	local function getRandomPosition()
@@ -505,8 +605,8 @@ local function spawnFirstMinigame(caughtFish)
 		local middleAreaY = minigameFrame.AbsolutePosition.Y + (frameHeight - middleAreaHeight) / 2
 
 		-- Calculate random position within the middle area
-		local randomX = middleAreaX + math.random(0, middleAreaWidth - buttonSize.X)
-		local randomY = middleAreaY + math.random(0, middleAreaHeight - buttonSize.Y)
+		local randomX = middleAreaX + math.random(0, middleAreaWidth - clickButtonForMinigame.AbsoluteSize.X)
+		local randomY = middleAreaY + math.random(0, middleAreaHeight - clickButtonForMinigame.AbsoluteSize.Y)
 
 		return UDim2.new(0, randomX, 0, randomY)
 	end
@@ -515,12 +615,17 @@ local function spawnFirstMinigame(caughtFish)
 	local function onButtonClicked(button)
 		if button then
 			successCount = successCount + 1
+			table.remove(currentButtons, table.find(currentButtons, button)) -- Remove from table
 			button:Destroy()
-			currentButton = nil -- Reset currentButton
 
 			if successCount >= neededSuccessCount then
 				print("Minigame successful!")
 				minigame1finished = true
+				minigameRunning = false -- Stop spawning buttons
+				if minigameDelay then
+					task.cancel(minigameDelay) -- Cancel the minigame timer
+					minigameDelay = nil
+				end
 				minigameGui:Destroy()
 				startSecondMinigame(caughtFish)
 			end
@@ -529,49 +634,112 @@ local function spawnFirstMinigame(caughtFish)
 
 	-- Function to spawn a new button
 	local function spawnButton()
-		if currentButton then
-			return
-		end -- Don't spawn if there's already a button
+		if minigameRunning then
+			local button = clickButtonForMinigame:Clone()
 
-		local button = clickButtonForMinigame:Clone()
-		button.Position = getRandomPosition()
-		button.Parent = minigameFrame
-		button.Visible = true
+			local button = clickButtonForMinigame:Clone()
+			local icon = button:WaitForChild("Icon")
+			local targetPosition = getRandomPosition()
 
-		currentButton = button
+			-- ** Initial Size and Position **
+			button.Size = UDim2.new(0, 0, 0, 0) -- Start with size 0
+			button.Position = targetPosition
+			icon.Size = UDim2.new(0, 0, 0, 0) -- Start with size 0 for icon too
+			icon.Position = originalIconPosition
 
-		-- Connect click event
-		button.MouseButton1Click:Connect(function()
-			onButtonClicked(button)
-		end)
+			button.Parent = minigameFrame
+			button.Visible = true
+			icon.Parent = button
+			icon.Visible = true
 
-		-- Timer to destroy the button if not clicked
-		task.delay(buttonSpawnInterval, function()
-			if button and button.Parent then
-				button:Destroy()
-				currentButton = nil -- Reset currentButton
-			end
-		end)
+			table.insert(currentButtons, button) -- ** Add button to the table **
+
+			-- ** Tween Info **
+			local sizeTweenInfo = TweenInfo.new(tweenDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+			-- ** Create and Play Tweens for Button **
+			local buttonSizeTween = TweenService:Create(button, sizeTweenInfo, { Size = originalButtonSize })
+			buttonSizeTween:Play()
+
+			-- ** Create and Play Tweens for Icon **
+			local iconSizeTween = TweenService:Create(icon, sizeTweenInfo, { Size = originalIconSize })
+			iconSizeTween:Play()
+
+			-- Connect click event
+			button.MouseButton1Click:Connect(function()
+				onButtonClicked(button)
+			end)
+
+			-- Timer to tween the button and icon back to size 0 if not clicked
+			buttonSizeTween.Completed:Connect(function()
+				if button and button.Parent then
+					local shrinkTweenInfo = TweenInfo.new(tweenDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+					-- ** Create and Play Shrink Tweens for Button **
+					local buttonShrinkTween =
+						TweenService:Create(button, shrinkTweenInfo, { Size = UDim2.new(0, 0, 0, 0) })
+					buttonShrinkTween:Play()
+
+					-- ** Create and Play Shrink Tweens for Icon **
+					local iconShrinkTween = TweenService:Create(icon, shrinkTweenInfo, { Size = UDim2.new(0, 0, 0, 0) })
+					iconShrinkTween:Play()
+
+					buttonShrinkTween.Completed:Connect(function()
+						if button and button.Parent then
+							table.remove(currentButtons, table.find(currentButtons, button)) -- Remove from table
+							button:Destroy()
+						end
+					end)
+				end
+			end)
+		end
 	end
 
-	-- Spawn buttons one at a time
+	-- Spawn multiple buttons with slight delays
 	for i = 1, numButtons do
+		if not minigameRunning then
+			break
+		end -- Exit the loop if minigame is not running
 		spawnButton()
-		task.wait(buttonSpawnInterval) -- Wait for the interval before spawning the next button
+		task.wait(buttonSpawnInterval) -- Wait for a short interval before spawning the next button
 	end
 
 	-- Minigame timer
-	task.delay(minigameDuration, function()
+	minigameDelay = task.delay(minigameDuration, function()
 		if minigameGui and minigameGui.Parent then
 			if successCount < neededSuccessCount and not minigame1finished then
 				print("Minigame failed!")
 				onMinigameFailed()
 				minigame1finished = true
+				minigameRunning = false -- Stop spawning buttons
 				minigameGui:Destroy()
 			end
 		end
 	end)
 end
+
+local function showTextForBar(endedAtPower)
+	local ThrowQualityUI = ReplicatedStorage.UIAssets.ThrowQuality:Clone()
+	ThrowQualityUI.Parent = Player.Character.Head
+	ThrowQualityUI.Main.Background.Visible = true
+	ThrowQualityUI.Main.Visible = true
+	if endedAtPower > 1.8 then
+		ThrowQualityUI.Main["Amazing!"].Visible = true
+		fishingSFX.Amazing:Play()
+	elseif endedAtPower > 1.2 then
+		ThrowQualityUI.Main["Great!"].Visible = true
+		fishingSFX.Great:Play()
+	elseif endedAtPower > 0.6 then
+		ThrowQualityUI.Main["Good"].Visible = true
+		fishingSFX.Okay:Play()
+	else
+		ThrowQualityUI.Main["Bad."].Visible = true
+		fishingSFX.Bad:Play()
+	end
+	task.wait(1.5)
+	ThrowQualityUI:Destroy()
+end
+
 UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
 	if gameProcessedEvent then
 		return
@@ -597,6 +765,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
 		currentCastingUI = CastingUIAsset:Clone()
 		currentCastingUI.Parent = Player.Character:WaitForChild("Head")
 		Bar = currentCastingUI:WaitForChild("Main"):WaitForChild("Bar"):WaitForChild("BarFrame")
+		MultiplierText = currentCastingUI:WaitForChild("Main"):WaitForChild("Multiplier")
 		AnimationManager:StopAnimations(Player.Character, 0.2)
 		AnimationManager:PlayAnimation(Player.Character, "FishingRod_Hold", false, 0.2)
 		startPowerBarAnimation()
@@ -618,10 +787,14 @@ UserInputService.InputEnded:Connect(function(input, gameProcessedEvent)
 	end
 
 	if isAnimating and currentCastingUI then
+		local endedAtPower = Bar.Size.Y.Scale
 		stopPowerBarAnimation()
+		task.spawn(function()
+			showTextForBar(endedAtPower)
+		end)
 		AnimationManager:StopAnimations(Player.Character)
 		local track = AnimationManager:PlayAnimation(Player.Character, "FishingRod_Throw")
-		task.wait(0.3)
+		track.Stopped:Wait()
 		AnimationManager:PlayAnimation(Player.Character, "FishingRod_Idle", true)
 		local fishingService = Knit.GetService("FishingService")
 		fishingService.FishingStarted:Fire()
@@ -658,6 +831,7 @@ function start()
 		--SimulateFishHooked(caughtFish)
 		spawnFirstMinigame(caughtFish)
 	end)
+
 	task.wait(5)
 	Player.Character.ChildRemoved:Connect(function(child)
 		if child:IsA("Tool") and child.Name:sub(-3) == "Rod" then
