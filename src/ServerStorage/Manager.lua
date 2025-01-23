@@ -14,23 +14,31 @@ local Manager = {}
 
 Manager.Profiles = {}
 
-function Manager.AdjustMoney(player: Player, amount: number)
+function Manager.AdjustCoins(player: Player, amount: number)
 	local profile = Manager.Profiles[player]
 	if not profile then
 		return
 	end
-	profile.Data.Money += amount
-	player.leaderstats.Money.Value = profile.Data.Money
-	DataService.Client.UpdateMoney:Fire(player, profile.Data.Money)
+	profile.Data.Coins += amount
+	player.leaderstats.Coins.Value = profile.Data.Coins
+	DataService.Client.UpdateCoins:Fire(player, profile.Data.Coins)
+end
+function Manager.AdjustStars(player: Player, amount: number)
+	local profile = Manager.Profiles[player]
+	if not profile then
+		return
+	end
+	profile.Data.Stars += amount
+	player.leaderstats.Stars.Value = profile.Data.Stars
+	DataService.Client.UpdateStars:Fire(player, profile.Data.Stars)
 end
 function Manager.AdjustFishes(player: Player, fish: string)
 	local profile = Manager.Profiles[player]
 	if not profile then
 		return
 	end
-	local petsTable = profile.Data.fishes
-	table.insert(petsTable, fish)
-	print(petsTable)
+	profile.Data.fishes = fish
+	print("Fishes:", profile.Data.fishes)
 	DataService.Client.UpdateFishes:Fire(player, profile.Data.fishes)
 end
 local function GetAllData(player: Player)

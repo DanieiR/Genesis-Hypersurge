@@ -7,8 +7,9 @@ local TweenService = game:GetService("TweenService")
 local Knit = require(ReplicatedStorage.Packages.Knit)
 local Manager = require(ServerStorage.Source.Manager)
 local RNGModule = require(ServerStorage.Source.Services.Fishing.RNGModule)
-local CurrentBobber
+local CurrentBobber = {}
 local fishingSFX = SoundService["Sound Effects"].Fishing
+local connection
 local FishingService = Knit.CreateService({
 	Name = "FishingService",
 	Client = {
@@ -29,11 +30,15 @@ function FishingService:StartFishing(player)
 	end
 	local WAIT_TIME = profile.Data.WaitTime -- This wait time will be changed depending on the players stats
 	local caughtFish = RNGModule.GetRandomFish()
-	print("Caught fish:", caughtFish)
+	print("Caught fish:", caughtFish.fish)
 	task.wait(WAIT_TIME)
 	self.Client.FishCaught:Fire(player, caughtFish) -- Signal that a fish has been caught
-	self.Client.FishingSuccess:Connect(function(player, success)
-		Manager.AdjustFishes(player, caughtFish)
+
+	connection = self.Client.FishingSuccess:Connect(function(player, success)
+		print("Fishing success for player:", player.Name)
+		table.insert(profile.Data.fishes, caughtFish)
+		Manager.AdjustFishes(player, profile.Data.fishes)
+		connection:Disconnect()
 	end)
 end
 function FishingService:AttachBobberToLine(Player)
@@ -51,7 +56,10 @@ function FishingService:AttachBobberToLine(Player)
 		warn("Line not found in rod")
 		return
 	end
-
+	local BobberModel = rod:FindFirstChild("Bobber")
+	if BobberModel then
+		BobberModel:Destroy()
+	end
 	local attachment1 = line:FindFirstChild("Attachment1")
 	local attachment0 = line:FindFirstChild("Attachment")
 	local rope = attachment0:FindFirstChild("RopeConstraint")
@@ -63,7 +71,7 @@ function FishingService:AttachBobberToLine(Player)
 
 	-- Clone the bobber model
 	local bobberModel = ReplicatedStorage:FindFirstChild("Bobbers").Bobber:Clone()
-	CurrentBobber = bobberModel
+	CurrentBobber[Player] = bobberModel
 
 	if not bobberModel then
 		warn("Bobber model not found in ReplicatedStorage")
@@ -108,6 +116,7 @@ function FishingService:AttachBobberToLine(Player)
 	bobberModel.PrimaryPart.Anchored = true
 	character.HumanoidRootPart.Anchored = true
 	rope.Length = 2
+	rope.Visible = true
 	self.Client.ThrowBobber:Fire(Player)
 	for Index = 0, 100, 1.5 do
 		local t = Index / 100
@@ -160,6 +169,8 @@ function FishingService:AttachBobberToLine(Player)
 	else
 		warn("Bobber did not reach water within the maximum rope length")
 		bobberModel:Destroy()
+		--local RodWelds = Knit.GetService("RodWelds")
+		--RodWelds:addBobberToRod(Player, rod)
 		self.Client.NoWater:Fire(Player)
 	end
 	dummyPart:Destroy()
@@ -168,9 +179,18 @@ function FishingService:Main(player)
 	self:AttachBobberToLine(player)
 end
 function FishingService:PerformCleanup(player, success)
-	if CurrentBobber then
-		CurrentBobber:Destroy()
+	if CurrentBobber[player] then
+		CurrentBobber[player]:Destroy()
+		CurrentBobber[player] = nil
 	end
+	local character = player.Character
+	local rod = character:FindFirstChildWhichIsA("Tool")
+	if not rod then
+		warn("Rod not found in character")
+		return
+	end
+	--local RodWelds = Knit.GetService("RodWelds")
+	--RodWelds:addBobberToRod(player, rod)
 end
 
 function FishingService:KnitStart()

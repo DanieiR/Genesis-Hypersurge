@@ -2,7 +2,7 @@
     This script will handle all the UI related effects for when the player starts fishing.
     Author: @Dan_iDev
     Date Created: 12/28/2024
-    Date Modified: 1/10/2024
+    Date Modified: 1/16/2024
 ]]
 
 -- Services
@@ -15,16 +15,18 @@ local Workspace = game:GetService("Workspace")
 local GuiService = game:GetService("GuiService")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
+local staterGui = game:GetService("StarterGui")
 -- Modules
 
 local AnimationManager =
 	require(ReplicatedStorage:WaitForChild("Source"):WaitForChild("Modules"):WaitForChild("AnimationsManager"))
-
+local ClickingMinigameConfig = require(ReplicatedStorage.Source.Configs.ClickingMinigame)
 -- Variables
 local Player = game.Players.LocalPlayer
 local PlayerGui = Player:WaitForChild("PlayerGui")
 local UIAssetsFolder = ReplicatedStorage:WaitForChild("UIAssets")
 local CastingUIAsset = UIAssetsFolder:WaitForChild("CastingUI")
+local notificationsUI = Player:WaitForChild("PlayerGui"):WaitForChild("Notifications")
 local isPlayerFishing = false
 local currentCastingUI = nil
 local Bar = nil
@@ -52,6 +54,7 @@ local minigameGui = nil
 local clickedDuringExclamation = false
 local clickConnection
 local fishingSFX = SoundService["Sound Effects"].Fishing
+local mouseClickEffect = PlayerGui:WaitForChild("Effects"):WaitForChild("Main").Click
 function animateToMax()
 	if not Bar then
 		return
@@ -186,9 +189,9 @@ local function PlayCatchAnimation(caughtFish)
 		RedBarConnection:Disconnect()
 		RedBarConnection = nil
 	end
-	local caughtFishModel = ReplicatedStorage.Fishes:FindFirstChild(caughtFish)
+	local caughtFishModel = ReplicatedStorage.Fishes:FindFirstChild(caughtFish.fish)
 	if not caughtFishModel then
-		warn("Fish model not found:", caughtFish)
+		warn("Fish model not found:", caughtFish.fish)
 		return
 	end
 
@@ -206,21 +209,36 @@ local function PlayCatchAnimation(caughtFish)
 		warn("RodTip not found in rod")
 		return
 	end
+	local fishingService = Knit.GetService("FishingService")
+	fishingService.FishingSuccess:Fire(caughtFish)
+
 	local bobber = rod:FindFirstChild("Bobber")
-	fishingSFX.FishCaught_Ding:Play()
-	fishingSFX.FishCaught_Water:Play()
+
 	-- Clone the fish model for the impulse effect
 	local clonedFishImpulse = caughtFishModel:Clone()
+	SoundService:SetListener(Enum.ListenerType.ObjectCFrame, clonedFishImpulse.PrimaryPart)
 	clonedFishImpulse.Parent = Workspace
 	clonedFishImpulse:SetPrimaryPartCFrame(bobber.Top.CFrame + Vector3.new(0, 1, 3))
 
 	-- Calculate impulse direction
 	local direction = (rootPart.Position + Vector3.new(0, 1, 0) - clonedFishImpulse.PrimaryPart.Position).Unit
 	local impulseForce = 10
-
+	SoundService:PlayLocalSound(fishingSFX.FishCaught_Ding)
+	SoundService:PlayLocalSound(fishingSFX.FishCaught_Water)
 	-- Apply impulse
 	clonedFishImpulse.PrimaryPart:ApplyImpulse(direction * impulseForce)
-	fishingSFX.FishShow:Play()
+	SoundService:PlayLocalSound(fishingSFX.FishShow)
+	task.spawn(function()
+		notificationsUI.Main.Fishing.FishingNotificationText.Text = "You caught a 1 in "
+			.. caughtFish.odds
+			.. " "
+			.. caughtFish.fish
+			.. " "
+			.. "at "
+			.. caughtFish.weight
+			.. "kg!"
+		notificationsUI.Main.Visible = true
+	end)
 	-- Clone the fish model for the left hand
 	local clonedFishHand = caughtFishModel:Clone()
 	clonedFishHand.Parent = Workspace
@@ -293,7 +311,7 @@ local function PlayCatchAnimation(caughtFish)
 		local weld = Instance.new("Weld")
 		weld.Part0 = leftArm
 		weld.Part1 = clonedFishHand.PrimaryPart
-		weld.C0 = leftGripAttachment.CFrame
+		weld.C0 = leftGripAttachment.CFrame * CFrame.Angles(math.rad(-90), math.rad(0), math.rad(90))
 		weld.Parent = weld.Part0
 
 		clonedFishHand.PrimaryPart.Anchored = false
@@ -308,21 +326,22 @@ local function PlayCatchAnimation(caughtFish)
 	FishingService = Knit.GetService("FishingService")
 	FishingService.Cleanup:Fire(true)
 	CatchTrack.Ended:Wait()
-
+	SoundService:SetListener(Enum.ListenerType.Camera, nil)
 	-- ** Reset Camera **
 	local resetCameraTween = TweenService:Create(camera, tweenInfo, {
 		CFrame = originalCameraCFrame,
 		FieldOfView = originalCameraFieldOfView,
 	})
 	resetCameraTween:Play()
-
 	AnimationManager:PlayAnimation(Player.Character, "FishingRod_Equip")
 	task.wait(0.3)
 	AnimationManager:PlayAnimation(Player.Character, "FishingRod_EquipIdle", true)
 	isPlayerFishing = false
 	Player.Character.Humanoid.WalkSpeed = 16
 	clonedFishHand:Destroy()
+	staterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, true)
 	task.wait(3)
+	notificationsUI.Main.Visible = false
 	clonedFishImpulse:Destroy()
 end
 
@@ -335,7 +354,7 @@ local function onMinigameFailed()
 		RedBarConnection:Disconnect()
 		RedBarConnection = nil
 	end
-	fishingSFX.Lose_Minigame:Play()
+	SoundService:PlayLocalSound(fishingSFX.Lose_Minigame)
 	FishingService = Knit.GetService("FishingService")
 	FishingService.Cleanup:Fire(false)
 	AnimationManager:StopAnimations(Player.Character)
@@ -344,6 +363,7 @@ local function onMinigameFailed()
 	AnimationManager:PlayAnimation(Player.Character, "FishingRod_EquipIdle", true)
 	isPlayerFishing = false
 	Player.Character.Humanoid.WalkSpeed = 16
+	staterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, true)
 end
 local function startSecondMinigame(caughtFish)
 	if not isRodEquipped() then
@@ -373,7 +393,7 @@ local function startSecondMinigame(caughtFish)
 	panOutTween.Completed:Connect(function()
 		panInTween:Play()
 	end)
-	fishingSFX.Start_Minigame:Play()
+	SoundService:PlayLocalSound(fishingSFX.Start_Minigame)
 	AnimationManager:PlayAnimation(Player.Character, "FishingRod_Reel", true)
 	fishingSFX.FishingReel_Minigame:Play()
 	task.wait(0.2)
@@ -394,13 +414,28 @@ local function startSecondMinigame(caughtFish)
 	RedBar = ReelFrame:WaitForChild("Bar"):WaitForChild("RedBar")
 	Bar = ReelFrame:WaitForChild("Bar")
 	Spam = ReelFrame:WaitForChild("Spam")
+	local Shadow = MainFrame:WaitForChild("Shadow")
 	local YankAmountsFrame = ReelFrame:WaitForChild("YankAmounts")
+	local holdImage = ReelFrame:WaitForChild("Hold")
 	local isHolding = false
 	local spamConnection = nil
 	local requiredSpamCount = 5 -- Number of clicks needed at each yank point
 	local spamCount = 0
 	local isSpamming = false
-
+	local rod = Player.Character:FindFirstChildWhichIsA("Tool")
+	if not rod then
+		warn("Rod not found in character")
+		return
+	end
+	local rodTip = rod:FindFirstChild("Handle").Line
+	if not rodTip then
+		warn("RodTip not found in rod")
+		return
+	end
+	local bobber = rod:FindFirstChild("Bobber")
+	for _, Particles in ipairs(bobber.Top.FishVFX:GetChildren()) do
+		Particles.Enabled = true
+	end
 	MainFrame.Clicking.Visible = false
 
 	-- Show the second minigame's UI
@@ -437,20 +472,20 @@ local function startSecondMinigame(caughtFish)
 	reelFrameTween:Play()
 	ReelFrame.CountDown.Visible = true
 	local countDownText = ReelFrame.CountDown.CountDownText
+	Shadow.Visible = true
 	for i = 1, 3, 1 do
 		countDownText.Text = tostring(4 - i)
 		task.wait(1)
 	end
+	Shadow.Visible = false
 	ReelFrame.CountDown.Visible = false
 	-- Make RedBar visible initially, no need to change its size
 	RedBar.Visible = true
-
 	-- Function to handle spam input
 	local function onSpamInput(input, gameProcessedEvent)
 		if gameProcessedEvent then
 			return
 		end
-
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
 			if isSpamming then
 				spamCount = spamCount + 1
@@ -470,6 +505,7 @@ local function startSecondMinigame(caughtFish)
 					-- Spamming successful, move to the next yank point
 					isSpamming = false
 					Spam.Visible = false
+					holdImage.Visible = true
 					spamCount = 0
 					yankPointIndex = yankPointIndex + 1
 					tweenGreenBarToNextYankPoint()
@@ -482,6 +518,7 @@ local function startSecondMinigame(caughtFish)
 	local function waitForSpamming()
 		isSpamming = true
 		Spam.Visible = true
+		holdImage.Visible = false
 		spamConnection = UserInputService.InputBegan:Connect(onSpamInput)
 	end
 
@@ -506,15 +543,19 @@ local function startSecondMinigame(caughtFish)
 		if spamConnection then
 			spamConnection:Disconnect()
 		end
+		holdImage.Visible = true
 		while minigameGui and minigameGui.Parent do
 			if isHolding then
-				local greenBarRiseSpeed = 0.02
+				local greenBarRiseSpeed = 0.01
 				local newGreenBarY = GreenBar.Size.Y.Scale + greenBarRiseSpeed
 				GreenBar.Size = UDim2.new(1, 0, newGreenBarY, 0)
 
 				if newGreenBarY >= 1.047 then
 					minigameGui:Destroy()
 					fishingSFX.FishingReel_Minigame:Stop()
+					if spamConnection then
+						spamConnection:Disconnect()
+					end
 					PlayCatchAnimation(caughtFish)
 					return
 				end
@@ -524,7 +565,7 @@ local function startSecondMinigame(caughtFish)
 				end
 			end
 
-			task.wait(0.2)
+			task.wait(0.05)
 		end
 	end
 	local function tweenRedBarToNextYankPoint()
@@ -536,10 +577,13 @@ local function startSecondMinigame(caughtFish)
 			if newRedBarY >= GreenBar.Size.Y.Scale then
 				minigameGui:Destroy()
 				fishingSFX.FishingReel_Minigame:Stop()
+				if spamConnection then
+					spamConnection:Disconnect()
+				end
 				onMinigameFailed()
 				return
 			end
-			task.wait(0.2)
+			task.wait(0.05)
 		end
 	end
 
@@ -549,7 +593,7 @@ local function startSecondMinigame(caughtFish)
 			GreenBarConnection = tweenGreenBarToNextYankPoint()
 		end)
 
-		task.spawn(function()
+		task.delay(2, function()
 			RedBarConnection = tweenRedBarToNextYankPoint()
 		end)
 	end
@@ -566,7 +610,7 @@ local function spawnFirstMinigame(caughtFish)
 	if minigameGui and minigameGui.Parent then
 		minigameGui:Destroy()
 	end
-	fishingSFX.Start_Minigame:Play()
+	SoundService:PlayLocalSound(fishingSFX.Start_Minigame)
 	minigame1finished = false
 	local playerGui = Player:WaitForChild("PlayerGui")
 	minigameGui = MinigameUI:Clone()
@@ -581,15 +625,13 @@ local function spawnFirstMinigame(caughtFish)
 	local originalIconPosition = clickButtonForMinigame.Icon.Position
 
 	-- Configuration
-	local numButtons = 10 -- Total number of buttons to spawn
-
-	local buttonSpawnInterval = 0.5
+	local numButtons = ClickingMinigameConfig.numButtons -- Total number of buttons to spawn
+	local buttonSpawnInterval = ClickingMinigameConfig.buttonSpawnInterval
 	local minigameDuration = numButtons * buttonSpawnInterval -- Seconds the minigame lasts
-	local successCount = 0
-	local neededSuccessCount = 5 -- Number of buttons to click successfully
+	local neededSuccessCount = ClickingMinigameConfig.neededSuccessCount -- Number of buttons to click successfully
+	local tweenDuration = ClickingMinigameConfig.tweenDuration -- Adjust the duration of the tween as needed
 	local currentButtons = {}
-	local tweenDuration = 1 -- Adjust the duration of the tween as needed
-
+	local successCount = 0
 	-- Function to get a random position within the middle area (halved Clicking frame)
 	local function getRandomPosition()
 		-- Get the size of the Clicking frame
@@ -614,6 +656,38 @@ local function spawnFirstMinigame(caughtFish)
 	-- Function to handle button click
 	local function onButtonClicked(button)
 		if button then
+			--Tween the mouseClickEffect images size to initally 0 then to its original size then destroy, also set its position to where the players mouse is
+			task.spawn(function()
+				local originalSize = mouseClickEffect.Size
+				local mouse = Player:GetMouse()
+				-- Clone the mouseClickEffect
+				local mouseClickEffectClone = mouseClickEffect:Clone()
+				mouseClickEffectClone.Parent = minigameGui -- Or some other appropriate UI container
+				mouseClickEffectClone.Size = UDim2.new(0, 0, 0, 0) -- Set initial size to 0
+				mouseClickEffectClone.Position = UDim2.new(0, mouse.X, 0, mouse.Y) -- Set position to mouse coordinates
+
+				-- Create a tween to animate the size
+				local tweenInfo = TweenInfo.new(
+					0.3, -- Duration
+					Enum.EasingStyle.Quad, -- Easing style
+					Enum.EasingDirection.Out, -- Easing direction
+					0, -- Repeat count
+					false, -- Reverses
+					0 -- Delay time
+				)
+
+				local tween = TweenService:Create(mouseClickEffectClone, tweenInfo, { Size = originalSize })
+				tween:Play()
+
+				-- Destroy the clone after the tween finishes
+				tween.Completed:Connect(function()
+					task.wait(0.1) -- Short delay to ensure the effect is visible
+					if mouseClickEffectClone then
+						mouseClickEffectClone:Destroy()
+					end
+				end)
+			end)
+
 			successCount = successCount + 1
 			table.remove(currentButtons, table.find(currentButtons, button)) -- Remove from table
 			button:Destroy()
@@ -725,16 +799,16 @@ local function showTextForBar(endedAtPower)
 	ThrowQualityUI.Main.Visible = true
 	if endedAtPower > 1.8 then
 		ThrowQualityUI.Main["Amazing!"].Visible = true
-		fishingSFX.Amazing:Play()
+		SoundService:PlayLocalSound(fishingSFX.Amazing)
 	elseif endedAtPower > 1.2 then
 		ThrowQualityUI.Main["Great!"].Visible = true
-		fishingSFX.Great:Play()
+		SoundService:PlayLocalSound(fishingSFX.Great)
 	elseif endedAtPower > 0.6 then
 		ThrowQualityUI.Main["Good"].Visible = true
-		fishingSFX.Okay:Play()
+		SoundService:PlayLocalSound(fishingSFX.Okay)
 	else
 		ThrowQualityUI.Main["Bad."].Visible = true
-		fishingSFX.Bad:Play()
+		SoundService:PlayLocalSound(fishingSFX.Bad)
 	end
 	task.wait(1.5)
 	ThrowQualityUI:Destroy()
@@ -792,6 +866,7 @@ UserInputService.InputEnded:Connect(function(input, gameProcessedEvent)
 		task.spawn(function()
 			showTextForBar(endedAtPower)
 		end)
+		staterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
 		AnimationManager:StopAnimations(Player.Character)
 		local track = AnimationManager:PlayAnimation(Player.Character, "FishingRod_Throw")
 		track.Stopped:Wait()
@@ -811,7 +886,7 @@ local function EndAnimationsIfNoWater()
 	if not hasEquippedRod then
 		return
 	end
-
+	staterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, true)
 	task.wait(3)
 	AnimationManager:StopAnimations(Player.Character)
 	AnimationManager:PlayAnimation(Player.Character, "FishingRod_Equip")
@@ -835,13 +910,13 @@ function start()
 	task.wait(5)
 	Player.Character.ChildRemoved:Connect(function(child)
 		if child:IsA("Tool") and child.Name:sub(-3) == "Rod" then
-			fishingSFX.Equip_Unequip_Rod:Play()
+			SoundService:PlayLocalSound(fishingSFX.Equip_Unequip_Rod)
 			resetState()
 		end
 	end)
 	Player.Character.ChildAdded:Connect(function(child)
 		if child:IsA("Tool") and child.Name:sub(-3) == "Rod" then
-			fishingSFX.Equip_Unequip_Rod:Play()
+			SoundService:PlayLocalSound(fishingSFX.Equip_Unequip_Rod)
 		end
 	end)
 end

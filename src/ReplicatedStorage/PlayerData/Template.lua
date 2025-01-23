@@ -1,8 +1,9 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Template = {
-	Money = 0,
-	WaitTime = 5,
+	Coins = 0,
+	Stars = 0,
+	WaitTime = 5, --The time to wait before fish is hooked and first minigame spawns
 	fishes = {},
 }
 

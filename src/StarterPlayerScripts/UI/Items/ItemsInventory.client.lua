@@ -17,37 +17,36 @@ local PlayersUI = player:WaitForChild("PlayerGui")
 local InventoryScreen = PlayersUI:WaitForChild("Inventory")
 local MainFrame = InventoryScreen:WaitForChild("Main")
 local InventoryButtonsFrame = MainFrame:WaitForChild("MainButtons"):WaitForChild("ButtonHolder")
+
 local InventoryFrames = {
 	["Rods"] = MainFrame.FishingRods,
 	["Fish"] = MainFrame.Fish,
 	["Inventory"] = MainFrame.Inventory,
 }
+
 local closeButtons = {
 	MainFrame.FishingRods:WaitForChild("CloseBtn"),
 	MainFrame.Fish:WaitForChild("CloseBtn"),
 	MainFrame.Inventory:WaitForChild("CloseBtn"),
 }
+
 local activeFrame = MainFrame.Fish
 
--- Functions
+-- Modified button connection with frame persistence
 local function connectButtons()
 	for _, button in ipairs(InventoryButtonsFrame:GetChildren()) do
 		if button:IsA("ImageButton") and InventoryFrames[button.Name] then
 			button.MouseButton1Click:Connect(function()
-				print("Button clicked:", button.Name)
 				local targetFrame = InventoryFrames[button.Name]
 
-				-- If a frame is currently visible and it's not the one we clicked
-				if activeFrame and activeFrame ~= targetFrame then
-					activeFrame.Visible = false -- Hide the currently active frame
-					activeFrame = nil
-				end
+				-- Only switch if clicking different button
+				if activeFrame ~= targetFrame then
+					-- Hide current frame
+					if activeFrame then
+						activeFrame.Visible = false
+					end
 
-				-- Toggle visibility of the target frame
-				if targetFrame.Visible then
-					targetFrame.Visible = false
-					activeFrame = nil
-				else
+					-- Show new frame
 					targetFrame.Visible = true
 					activeFrame = targetFrame
 				end
@@ -56,18 +55,27 @@ local function connectButtons()
 	end
 end
 
+-- Close button handling (optional - remove if not needed)
 for _, button in ipairs(closeButtons) do
 	button.MouseButton1Click:Connect(function()
-		MainFrame.Visible = false
-		activeFrame.Visible = false
-		activeFrame = MainFrame.Fish
-		activeFrame.Visible = true
+		-- Keep at least one frame visible
+		if activeFrame then
+			activeFrame.Visible = false
+			-- Default to Fish frame when closing
+			activeFrame = MainFrame.Fish
+			activeFrame.Visible = true
+		end
 	end)
 end
 
 function start()
 	task.wait(3)
 	connectButtons()
+
+	-- Initialize with default frame
+	for _, frame in pairs(InventoryFrames) do
+		frame.Visible = (frame == activeFrame)
+	end
 end
 
 Knit:OnStart():andThen(start)

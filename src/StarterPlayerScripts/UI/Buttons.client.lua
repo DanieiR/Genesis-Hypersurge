@@ -1,64 +1,84 @@
 --[[
-    This script will handle all the button connections for the UI elements.
+    UI Buttons with Loading Safeguards
     Author: @Dan_iDev
-    Date Created: 1/6/2024
-    Date Modified: 1/6/2024
+    Version: 1.0.1
 ]]
 
 -- Services
 local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit)
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
 
--- Local Variables
-local player = Players.LocalPlayer
-local PlayersUI = player:WaitForChild("PlayerGui")
-local HUDScreen = PlayersUI:WaitForChild("PlayerHUD")
-local MainFrame = HUDScreen:WaitForChild("Main")
-local ButtonsFrame = MainFrame:WaitForChild("Buttons")
-local FramesTable = {
-	["Items"] = PlayersUI.Inventory.Main,
-	["Index"] = PlayersUI.Index.Main,
-	["Units"] = PlayersUI.Units.Main,
-	["Shop"] = PlayersUI.RobuxShop.Main,
-	["Settings"] = PlayersUI.Settings.Main,
-	["Summon"] = PlayersUI.Summon.Main,
-}
-local activeFrame = nil
+-- Enhanced UI waiting function
+local function waitForUIElement(parent, childName, timeout)
+	timeout = timeout or 5 -- Default 5 second timeout
+	local element = parent:FindFirstChild(childName)
 
--- Functions
+	if not element then
+		local startTime = os.clock()
+		repeat
+			task.wait()
+			element = parent:FindFirstChild(childName)
+		until element or (os.clock() - startTime) > timeout
+	end
 
-local function connectButtons()
-	-- Connect the buttons
+	if not element then
+		warn("UI element not found:", parent:GetFullName() .. "/" .. childName)
+	end
+
+	return element
+end
+
+-- Initialize UI with proper waiting
+local function initializeUI()
+	local player = Players.LocalPlayer
+	local PlayersUI = player:WaitForChild("PlayerGui")
+
+	-- Wait for core HUD elements
+	local HUDScreen = waitForUIElement(PlayersUI, "PlayerHUD")
+	local MainFrame = waitForUIElement(HUDScreen, "Main")
+	local ButtonsFrame = waitForUIElement(MainFrame, "Buttons")
+
+	-- Wait for individual frames
+	local FramesTable = {
+		["Items"] = waitForUIElement(waitForUIElement(PlayersUI, "Inventory"), "Main"),
+		["Index"] = waitForUIElement(waitForUIElement(PlayersUI, "Index"), "Main"),
+		["Units"] = waitForUIElement(waitForUIElement(PlayersUI, "Units"), "Main"),
+		["Shop"] = waitForUIElement(waitForUIElement(PlayersUI, "RobuxShop"), "Main"),
+		["Settings"] = waitForUIElement(waitForUIElement(PlayersUI, "Settings"), "Main"),
+		["Summon"] = waitForUIElement(waitForUIElement(PlayersUI, "Summon"), "Main"),
+	}
+
+	return ButtonsFrame, FramesTable
+end
+
+local function connectButtons(ButtonsFrame, FramesTable)
 	for _, button in ipairs(ButtonsFrame:GetChildren()) do
 		if button:IsA("ImageButton") and FramesTable[button.Name] then
 			button.MouseButton1Click:Connect(function()
-				print("Button clicked:", button.Name)
 				local targetFrame = FramesTable[button.Name]
 
-				-- If a frame is currently visible and it's not the one we clicked
 				if activeFrame and activeFrame ~= targetFrame then
-					activeFrame.Visible = false -- Hide the currently active frame
+					activeFrame.Visible = false
 					activeFrame = nil
 				end
 
-				-- Toggle visibility of the target frame
-				if targetFrame.Visible then
-					targetFrame.Visible = false
-					activeFrame = nil
-				else
-					targetFrame.Visible = true
-					activeFrame = targetFrame
-				end
+				targetFrame.Visible = not targetFrame.Visible
+				activeFrame = targetFrame.Visible and targetFrame or nil
 			end)
 		end
 	end
 end
 
 function start()
-	task.wait(3)
-	connectButtons()
+	local success, ButtonsFrame, FramesTable = pcall(initializeUI)
+	if success then
+		connectButtons(ButtonsFrame, FramesTable)
+	else
+		warn("Failed to initialize UI elements")
+	end
 end
 
-Knit:OnStart():andThen(start)
+Knit:OnStart():andThen(function()
+	task.wait(1)
+	start()
+end)

@@ -9,14 +9,15 @@ local Manager = require(ServerStorage.Source.Manager)
 local DataService = Knit.CreateService({
 	Name = "DataService",
 	Client = {
-		UpdateMoney = Knit.CreateSignal(),
+		UpdateCoins = Knit.CreateSignal(),
+		UpdateStars = Knit.CreateSignal(),
 		UpdateFishes = Knit.CreateSignal(),
 		ResetData = Knit.CreateSignal(),
 	},
 })
 local ProfileTemplate = require(ReplicatedStorage.Source.PlayerData.Template)
 
-local ProfileStore = ProfileService.GetProfileStore("PlayerData1", ProfileTemplate)
+local ProfileStore = ProfileService.GetProfileStore("PlayerData6", ProfileTemplate)
 
 local function giveLeaderStats(player)
 	local profile = Manager.Profiles[player]
@@ -26,9 +27,12 @@ local function giveLeaderStats(player)
 	local leaderstats = Instance.new("Folder")
 	leaderstats.Name = "leaderstats"
 	leaderstats.Parent = player
-	local Money = Instance.new("NumberValue")
-	Money.Parent = leaderstats
-	Money.Name = "Money"
+	local Coins = Instance.new("NumberValue")
+	Coins.Parent = leaderstats
+	Coins.Name = "Coins"
+	local Stars = Instance.new("NumberValue")
+	Stars.Parent = leaderstats
+	Stars.Name = "Stars"
 end
 
 function PlayerAdded(player)

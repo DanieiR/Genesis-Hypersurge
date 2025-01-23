@@ -34,13 +34,15 @@ function StateController.GetData(): Template.PlayerData
 	return PlayerData
 end
 
-function StateController:UpdateMoney(money: number)
-	PlayerData.Money = money
+function StateController:UpdateCoins(coins: number)
+	PlayerData.Coins = coins
+end
+function StateController:UpdateStars(stars: number)
+	PlayerData.Stars = stars
 end
 function StateController:UpdateFishes(fishes: table)
-	PlayerData.Fishes = fishes
+	PlayerData.fishes = fishes
 end
-
 function StateController:ResetData(data)
 	PlayerData = data
 end
