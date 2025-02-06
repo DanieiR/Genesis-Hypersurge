@@ -163,21 +163,20 @@ local function resetState()
 		print("Destroyed minigameGui.") -- Debug print
 	end
 
-	-- Disconnect input connections (add more if needed for minigames)
 	if clickConnection then
 		clickConnection:Disconnect()
 		clickConnection = nil
-		print("Disconnected clickConnection.") -- Debug print
+		print("Disconnected clickConnection.")
 	end
 
 	FishingService = Knit.GetService("FishingService")
-	FishingService.Cleanup:Fire(false) -- Make sure server knows we stopped
+	FishingService.Cleanup:Fire(false)
 
 	AnimationManager:StopAnimations(Player.Character, 0.2)
 
 	Player.Character.Humanoid.WalkSpeed = 16
 
-	print("Fishing state reset.") -- Debug print
+	print("Fishing state reset.")
 end
 
 local function PlayCatchAnimation(caughtFish)
@@ -211,7 +210,8 @@ local function PlayCatchAnimation(caughtFish)
 	end
 	local fishingService = Knit.GetService("FishingService")
 	fishingService.FishingSuccess:Fire(caughtFish)
-
+	local LevelService = Knit.GetService("LevelService")
+	LevelService.UpdatePlayerExp:Fire(caughtFish)
 	local bobber = rod:FindFirstChild("Bobber")
 
 	-- Clone the fish model for the impulse effect
@@ -862,7 +862,9 @@ UserInputService.InputEnded:Connect(function(input, gameProcessedEvent)
 
 	if isAnimating and currentCastingUI then
 		local endedAtPower = Bar.Size.Y.Scale
-		stopPowerBarAnimation()
+		task.spawn(function()
+			stopPowerBarAnimation()
+		end)
 		task.spawn(function()
 			showTextForBar(endedAtPower)
 		end)
@@ -907,18 +909,33 @@ function start()
 		spawnFirstMinigame(caughtFish)
 	end)
 
-	task.wait(5)
-	Player.Character.ChildRemoved:Connect(function(child)
-		if child:IsA("Tool") and child.Name:sub(-3) == "Rod" then
-			SoundService:PlayLocalSound(fishingSFX.Equip_Unequip_Rod)
-			resetState()
+	local function setupCharacterEvents(character)
+		-- Track tool events
+		local function trackToolEvents()
+			-- Child Removed
+			character.ChildRemoved:Connect(function(child)
+				if child:IsA("Tool") and child.Name:sub(-3) == "Rod" then
+					SoundService:PlayLocalSound(fishingSFX.Equip_Unequip_Rod)
+					resetState()
+				end
+			end)
+
+			-- Child Added
+			character.ChildAdded:Connect(function(child)
+				if child:IsA("Tool") and child.Name:sub(-3) == "Rod" then
+					SoundService:PlayLocalSound(fishingSFX.Equip_Unequip_Rod)
+				end
+			end)
 		end
-	end)
-	Player.Character.ChildAdded:Connect(function(child)
-		if child:IsA("Tool") and child.Name:sub(-3) == "Rod" then
-			SoundService:PlayLocalSound(fishingSFX.Equip_Unequip_Rod)
-		end
-	end)
+
+		trackToolEvents()
+	end
+
+	if Player.Character then
+		setupCharacterEvents(Player.Character)
+	end
+
+	Player.CharacterAdded:Connect(setupCharacterEvents)
 end
 
 Knit:OnStart():andThen(start)

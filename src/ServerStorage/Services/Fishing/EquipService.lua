@@ -12,15 +12,15 @@ local EquipService = Knit.CreateService({
 	},
 })
 
-function EquipService:_PerformValidationChecks(player, FishName)
+function EquipService:_PerformValidationChecks(player, FishID)
 	local profile = Manager.Profiles[player]
 	if not profile then
 		print("No profile found for player:", player.Name)
 		return false
 	end
-	-- Go through players fishes table and match the fishes name with the FishName if a fish is found return true
+	-- Go through players fishes table and match the fishes name with the FishID if a fish is found return true
 	for _, fish in ipairs(profile.Data.fishes) do
-		if fish.fish == FishName then
+		if fish.ID == FishID then
 			return true
 		end
 	end
@@ -45,8 +45,9 @@ function EquipService:_ClearPlayerPreviousFishTools(player)
 	end
 end
 
-function EquipService:_GivePlayerFishTool(player, FishName)
-	local doesPlayerOwnFish = self:_PerformValidationChecks(player, FishName)
+function EquipService:_GivePlayerFishTool(player, FishName, FishID)
+	print(player, FishName, FishID)
+	local doesPlayerOwnFish = self:_PerformValidationChecks(player, FishID)
 	print("Does player own fish:", doesPlayerOwnFish)
 	-- Give the player the new fish tool
 	if doesPlayerOwnFish then
@@ -58,8 +59,8 @@ function EquipService:_GivePlayerFishTool(player, FishName)
 end
 
 function EquipService:KnitStart()
-	self.Client.equipFish:Connect(function(player, FishName)
-		self:_GivePlayerFishTool(player, FishName)
+	self.Client.equipFish:Connect(function(player, FishName, FishID)
+		self:_GivePlayerFishTool(player, FishName, FishID)
 	end)
 end
 

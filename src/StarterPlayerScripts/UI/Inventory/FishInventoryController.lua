@@ -92,7 +92,7 @@ function FishInventoryController:_InitializeReferences()
 
 	-- State management
 	self._currentTemplate = nil
-	self._viewportFishes = workspace:FindFirstChild(VIEWPORT_FISHES_NAME)
+	self._viewportFishes = ReplicatedStorage:FindFirstChild(VIEWPORT_FISHES_NAME)
 
 	if not self._viewportFishes then
 		warn("ViewportFishes container not found in workspace! Viewports will be disabled.")
@@ -170,6 +170,14 @@ function FishInventoryController:_ClearInventory()
 			child:Destroy()
 		end
 	end
+	self._fishDetails.FishName.Text = "Fish Name"
+	self._fishDetails.Rarity.Text = "Common"
+	self._fishDetailsFrame.ButtonHolder.Lock.BtnText.Text = "LOCK"
+	self._fishDetailsFrame.ButtonHolder.Equip.BtnText.Text = "EQUIP"
+	local worldModel = self._fishDetailsFrame.Background.ViewportFrame:FindFirstChild("WorldModel")
+	if worldModel then
+		worldModel:Destroy()
+	end
 end
 
 function FishInventoryController:_CreateFishTemplate(fishData)
@@ -183,10 +191,25 @@ function FishInventoryController:_CreateFishTemplate(fishData)
     ]]
 	local template = self._fishTemplate:Clone()
 	template.Parent = self._fishesScrollingFrame
+	if fishData.locked == true then
+		template.Locked.Visible = true
+		template.IsLocked.Value = true
+	else
+		template.Locked.Visible = false
+		template.IsLocked.Value = false
+	end
+	if fishData.equipped == true then
+		template.EquippedCheckmark.Visible = true
+		template.IsEquipped.Value = true
+	else
+		template.EquippedCheckmark.Visible = false
+		template.IsEquipped.Value = false
+	end
 	template.Visible = true
 
 	-- Data binding
 	template.FishName.Text = fishData.fish
+	template.FishID.Value = fishData.ID
 	template.NumericValue.Text = tostring(fishData.weight) .. " KG"
 	template.Rarity.Value = fishData.rarity
 
@@ -271,8 +294,9 @@ function FishInventoryController:_HandleEquipFish()
     ]]
 	local EquipService = Knit.GetService("EquipService")
 	local fishName = self._fishDetails.FishName.Text
-
-	EquipService.equipFish:Fire(fishName)
+	local fishID = self._currentTemplate.FishID.Value
+	print(self._currentTemplate.FishID.Value)
+	EquipService.equipFish:Fire(fishName, fishID)
 
 	-- Temporary connection for UI feedback
 	connection = EquipService.equipFish:Connect(function()
@@ -283,10 +307,11 @@ function FishInventoryController:_HandleEquipFish()
 				template.IsEquipped.Value = false
 			end
 		end
-
+		local InventoryService = Knit.GetService("InventoryService")
 		-- Set new checkmark
 		self._currentTemplate.IsEquipped.Value = true
 		if self._currentTemplate.IsEquipped.Value == true then
+			InventoryService.SetEquippedState:Fire(self._currentTemplate.FishID.Value, true)
 			self._fishDetailsFrame.ButtonHolder.Equip.BtnText.Text = "EQUIPPED"
 		else
 			self._fishDetailsFrame.ButtonHolder.Equip.BtnText.Text = "EQUIP"
@@ -321,6 +346,13 @@ function FishInventoryController:_PopulateInventory()
 		self:_CreateFishTemplate(fishData)
 	end
 end
+function FishInventoryController:_PopulateInventoryAfterStarted(newFishes)
+	local fishDataList = newFishes
+	self:_ClearInventory()
+	for _, fishData in ipairs(fishDataList) do
+		self:_CreateFishTemplate(fishData)
+	end
+end
 
 function FishInventoryController:KnitStart()
 	-- Main initialization sequence
@@ -332,9 +364,9 @@ function FishInventoryController:KnitStart()
 
 	-- Data update subscriptions
 	local DataService = Knit.GetService("DataService")
-	DataService.UpdateFishes:Connect(function()
-		task.wait(3)
-		self:_PopulateInventory()
+	DataService.UpdateFishes:Connect(function(newFishes)
+		print(newFishes)
+		self:_PopulateInventoryAfterStarted(newFishes)
 	end)
 
 	-- UI event bindings
@@ -347,13 +379,16 @@ function FishInventoryController:KnitStart()
 		self:_HandleEquipFish()
 	end)
 	buttonHolder.Lock.MouseButton1Click:Connect(function()
+		local InventoryService = Knit.GetService("InventoryService")
 		if self._currentTemplate then
 			self._currentTemplate.Locked.Visible = not self._currentTemplate.Locked.Visible
 			self._currentTemplate.IsLocked.Value = not self._currentTemplate.IsLocked.Value
 			if self._currentTemplate.IsLocked.Value == true then
 				self._fishDetailsFrame.ButtonHolder.Lock.BtnText.Text = "LOCKED"
+				InventoryService.SetLockState:Fire(self._currentTemplate.FishID.Value, true)
 			else
 				self._fishDetailsFrame.ButtonHolder.Lock.BtnText.Text = "LOCK"
+				InventoryService.SetLockState:Fire(self._currentTemplate.FishID.Value, false)
 			end
 		end
 	end)

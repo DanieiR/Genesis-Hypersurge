@@ -12,12 +12,14 @@ local DataService = Knit.CreateService({
 		UpdateCoins = Knit.CreateSignal(),
 		UpdateStars = Knit.CreateSignal(),
 		UpdateFishes = Knit.CreateSignal(),
+		UpdateExp = Knit.CreateSignal(),
+		LevelUp = Knit.CreateSignal(),
 		ResetData = Knit.CreateSignal(),
 	},
 })
 local ProfileTemplate = require(ReplicatedStorage.Source.PlayerData.Template)
 
-local ProfileStore = ProfileService.GetProfileStore("PlayerData6", ProfileTemplate)
+local ProfileStore = ProfileService.GetProfileStore("PlayerData26", ProfileTemplate)
 
 local function giveLeaderStats(player)
 	local profile = Manager.Profiles[player]

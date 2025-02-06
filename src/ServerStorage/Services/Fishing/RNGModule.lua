@@ -12,6 +12,10 @@ for fishName, fishData in pairs(FishesConfig) do
 		sellPrice = fishData.SellPrice,
 		weight = fishData.Weight,
 		description = fishData.Description,
+		exp = fishData.Exp,
+		ID = fishData.FishID,
+		locked = fishData.isLocked,
+		equipped = fishData.Equipped,
 	})
 end
 print("Fishes:", fishes)

@@ -40,6 +40,12 @@ end
 function StateController:UpdateStars(stars: number)
 	PlayerData.Stars = stars
 end
+function StateController:UpdateExp(exp: number)
+	PlayerData.Exp = exp
+end
+function StateController:UpdateLevel(level: number)
+	PlayerData.Level = level
+end
 function StateController:UpdateFishes(fishes: table)
 	PlayerData.fishes = fishes
 end

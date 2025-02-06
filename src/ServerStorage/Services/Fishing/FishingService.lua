@@ -21,25 +21,41 @@ local FishingService = Knit.CreateService({
 		ThrowBobber = Knit.CreateSignal(),
 	},
 })
-
+function FishingService:GenerateNumericFishId()
+	local timestamp = os.time()
+	local randomPart = math.random(100000000, 999999999) -- 9-digit random
+	return tonumber(tostring(timestamp) .. tostring(randomPart))
+end
 function FishingService:StartFishing(player)
 	local profile = Manager.Profiles[player]
 	if not profile then
-		print("No profile found for player:", player.Name)
 		return
 	end
-	local WAIT_TIME = profile.Data.WaitTime -- This wait time will be changed depending on the players stats
-	local caughtFish = RNGModule.GetRandomFish()
-	print("Caught fish:", caughtFish.fish)
-	task.wait(WAIT_TIME)
-	self.Client.FishCaught:Fire(player, caughtFish) -- Signal that a fish has been caught
 
-	connection = self.Client.FishingSuccess:Connect(function(player, success)
-		print("Fishing success for player:", player.Name)
-		table.insert(profile.Data.fishes, caughtFish)
-		Manager.AdjustFishes(player, profile.Data.fishes)
+	-- Create DEEP COPY of fish template
+	local baseFish = RNGModule.GetRandomFish()
+	local caughtFish = table.clone(baseFish)
+	caughtFish.ID = self:GenerateNumericFishId()
+	caughtFish.equipped = false
+	caughtFish.locked = false
+
+	-- Store fish in temporary table
+	local tempFishStore = { caughtFish }
+
+	-- Create fresh connection each time
+	local connection
+	connection = self.Client.FishingSuccess:Connect(function(_, success)
+		if success and tempFishStore[1] then
+			local QuestService = Knit.GetService("QuestService")
+			QuestService:OnFishAdded(player, caughtFish)
+			Manager.AdjustFishes(player, tempFishStore[1])
+			tempFishStore[1] = nil -- Prevent reuse
+		end
 		connection:Disconnect()
 	end)
+
+	task.wait(profile.Data.WaitTime)
+	self.Client.FishCaught:Fire(player, caughtFish)
 end
 function FishingService:AttachBobberToLine(Player)
 	local character = Player.Character
