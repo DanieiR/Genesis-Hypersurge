@@ -6,18 +6,30 @@ local Prompts = Component.new({
 	Ancestors = { workspace },
 })
 
+local debounce = {}
+local COOLDOWN_TIME = 2 -- Cooldown in seconds
+
 function Prompts:_InitiateSelling(player, NPC)
 	local SellService = Knit.GetService("SellingService")
 	SellService:_InitiateDialogueOnClient(player, NPC)
 end
 
 Prompts.Started:Connect(function(component)
-	component.Instance:WaitForChild("ProximityPrompt").Triggered:Connect(function(plr)
-		print(plr.Name .. " Triggered the prompt")
+	local prompt = component.Instance:WaitForChild("ProximityPrompt")
+	prompt.Triggered:Connect(function(player)
+		if debounce[player.UserId] then
+			return
+		end
+		debounce[player.UserId] = true
+		task.delay(COOLDOWN_TIME, function()
+			debounce[player.UserId] = nil
+		end)
+
+		print(player.Name .. " Triggered the prompt")
 		local NPCName = component.Instance.Parent.Name
 		print(NPCName)
 		if NPCName == "Santi" then
-			Prompts:_InitiateSelling(plr, component.Instance.Parent)
+			Prompts:_InitiateSelling(player, component.Instance.Parent)
 		end
 	end)
 end)

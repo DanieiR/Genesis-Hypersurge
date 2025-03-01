@@ -28,9 +28,9 @@ function Manager.AdjustStars(player: Player, amount: number)
 	if not profile then
 		return
 	end
-	profile.Data.Stars += amount
-	player.leaderstats.Stars.Value = profile.Data.Stars
-	DataService.Client.UpdateStars:Fire(player, profile.Data.Stars)
+	profile.Data.Gems += amount
+	player.leaderstats.Gems.Value = profile.Data.Gems
+	DataService.Client.UpdateStars:Fire(player, profile.Data.Gems)
 end
 function Manager.AdjustFishes(player: Player, newFish: table)
 	local profile = Manager.Profiles[player]
@@ -61,6 +61,20 @@ function Manager.AdjustFishes(player: Player, newFish: table)
 	DataService.Client.UpdateFishes:Fire(player, updatedFishes)
 
 	print(`Added fish {newFish.ID} to {player.Name}. Total: {#updatedFishes}`)
+end
+function Manager.AdjustUnits(player: Player, newUnits: table)
+	local profile = Manager.Profiles[player]
+	if not profile then
+		return
+	end
+
+	-- Create new table reference
+	local UpdatedUnits = table.clone(profile.Data.units)
+	table.insert(UpdatedUnits, newUnits)
+
+	-- Atomic update
+	profile.Data.units = UpdatedUnits
+	DataService.Client.UpdateUnits:Fire(player, profile.Data.units)
 end
 function Manager.RemoveFishes(player: Player, fishIdsToRemove: { number })
 	local profile = Manager.Profiles[player]
@@ -117,6 +131,58 @@ function Manager.SellFishes(player: Player, fishIdsToSell: { number })
 
 	return totalValue, removedCount
 end
+function Manager.RemoveUnits(player: Player, UnitIdsToRemove: { number })
+	local profile = Manager.Profiles[player]
+	if not profile then
+		return
+	end
+
+	-- Create new table reference for immutability
+	local updatedUnits = {}
+	local removedCount = 0
+
+	for _, Unit in ipairs(profile.Data.units) do
+		if not table.find(UnitIdsToRemove, Unit.ID) then
+			table.insert(updatedUnits, Unit)
+		else
+			removedCount += 1
+		end
+	end
+
+	if removedCount > 0 then
+		profile.Data.units = updatedUnits
+		DataService.Client.UpdateUnits:Fire(player, updatedUnits)
+		print(`Removed {removedCount} units from {player.Name}'s inventory`)
+	end
+
+	return removedCount
+end
+function Manager.SellUnits(player: Player, unitIdsToSell: { number })
+	local profile = Manager.Profiles[player]
+	if not profile then
+		return 0
+	end
+
+	-- Calculate total value and validate fish exist
+	local totalValue = 0
+	local validIds = unitIdsToSell
+
+	for _, Unit in ipairs(profile.Data.units) do
+		if table.find(unitIdsToSell, Unit.ID) and not Unit.isLocked then
+			totalValue += Unit.SellPrice
+			table.insert(validIds, Unit.ID)
+		end
+	end
+	print(validIds)
+	local removedCount = Manager.RemoveUnits(player, validIds)
+
+	if removedCount > 0 then
+		Manager.AdjustCoins(player, totalValue)
+		print(`Sold {removedCount} Units for {totalValue} coins`)
+	end
+
+	return totalValue, removedCount
+end
 function Manager.AdjustExp(player: Player, exp: number)
 	local profile = Manager.Profiles[player]
 	if not profile then
@@ -140,20 +206,27 @@ function Manager:GetQuestData(player)
 end
 
 function Manager:UpdateQuestProgress(player, progress)
-	local profile = self.Profiles[player]
+	local profile = Manager.Profiles[player]
 	if profile then
 		profile.Data.quests.progress = progress
 	end
 end
 
 function Manager:SetCurrentQuest(player, questId)
-	local profile = self.Profiles[player]
+	local profile = Manager.Profiles[player]
 	if profile then
 		profile.Data.quests.currentQuestId = questId
 		profile.Data.quests.progress = 0
 	end
 end
-
+function Manager.GiveRod(player, RodName)
+	local profile = Manager.Profiles[player]
+	if profile then
+		profile.Data[RodName] = true
+		profile.Data.currentEquippedRod = RodName
+	end
+	DataService.Client.RodUpdate:Fire(player, RodName)
+end
 local function GetAllData(player: Player)
 	local profile = Manager.Profiles[player]
 	if not profile then

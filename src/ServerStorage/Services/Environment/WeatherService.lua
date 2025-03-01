@@ -13,7 +13,7 @@ local WeatherService = Knit.CreateService({
 local WEATHER_EVENTS = { "Clear", "Cloudy", "Rain" }
 local currentWeather = "Clear"
 
-local WEATHER_CHANGE_INTERVAL = 60
+local WEATHER_CHANGE_INTERVAL = 360
 
 local function getRandomWeather()
 	return WEATHER_EVENTS[math.random(1, #WEATHER_EVENTS)]

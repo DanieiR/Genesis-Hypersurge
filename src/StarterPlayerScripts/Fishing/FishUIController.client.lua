@@ -180,6 +180,7 @@ local function resetState()
 end
 
 local function PlayCatchAnimation(caughtFish)
+	-- Disconnect any active bar connections
 	if GreenBarConnection then
 		GreenBarConnection:Disconnect()
 		GreenBarConnection = nil
@@ -188,6 +189,8 @@ local function PlayCatchAnimation(caughtFish)
 		RedBarConnection:Disconnect()
 		RedBarConnection = nil
 	end
+
+	-- Get the caught fish model
 	local caughtFishModel = ReplicatedStorage.Fishes:FindFirstChild(caughtFish.fish)
 	if not caughtFishModel then
 		warn("Fish model not found:", caughtFish.fish)
@@ -197,7 +200,6 @@ local function PlayCatchAnimation(caughtFish)
 	local character = Player.Character
 	local rootPart = character:WaitForChild("HumanoidRootPart")
 	local rod = character:FindFirstChildWhichIsA("Tool")
-
 	if not rod then
 		warn("Rod not found in character")
 		return
@@ -208,141 +210,140 @@ local function PlayCatchAnimation(caughtFish)
 		warn("RodTip not found in rod")
 		return
 	end
+
+	-- Fire fishing and EXP update events
 	local fishingService = Knit.GetService("FishingService")
 	fishingService.FishingSuccess:Fire(caughtFish)
 	local LevelService = Knit.GetService("LevelService")
 	LevelService.UpdatePlayerExp:Fire(caughtFish)
 	local bobber = rod:FindFirstChild("Bobber")
 
-	-- Clone the fish model for the impulse effect
-	local clonedFishImpulse = caughtFishModel:Clone()
-	SoundService:SetListener(Enum.ListenerType.ObjectCFrame, clonedFishImpulse.PrimaryPart)
-	clonedFishImpulse.Parent = Workspace
-	clonedFishImpulse:SetPrimaryPartCFrame(bobber.Top.CFrame + Vector3.new(0, 1, 3))
-
-	-- Calculate impulse direction
-	local direction = (rootPart.Position + Vector3.new(0, 1, 0) - clonedFishImpulse.PrimaryPart.Position).Unit
-	local impulseForce = 10
 	SoundService:PlayLocalSound(fishingSFX.FishCaught_Ding)
 	SoundService:PlayLocalSound(fishingSFX.FishCaught_Water)
-	-- Apply impulse
-	clonedFishImpulse.PrimaryPart:ApplyImpulse(direction * impulseForce)
+	FishingService.ThrowFish:Fire(caughtFish)
 	SoundService:PlayLocalSound(fishingSFX.FishShow)
+
+	-- Display a fishing notification
 	task.spawn(function()
 		notificationsUI.Main.Fishing.FishingNotificationText.Text = "You caught a 1 in "
 			.. caughtFish.odds
 			.. " "
 			.. caughtFish.fish
-			.. " "
-			.. "at "
+			.. " at "
 			.. caughtFish.weight
 			.. "kg!"
 		notificationsUI.Main.Visible = true
 	end)
+
 	-- Clone the fish model for the left hand
 	local clonedFishHand = caughtFishModel:Clone()
 	clonedFishHand.Parent = Workspace
-	clonedFishHand:SetPrimaryPartCFrame(CFrame.new(0, -100, 0)) -- Initially position it off-screen
+	clonedFishHand:SetPrimaryPartCFrame(CFrame.new(0, -100, 0)) -- Initially off-screen
 
-	-- Find the left hand and attachment
+	-- Find the left arm and grip attachment
 	local leftArm = character:FindFirstChild("Left Arm")
-
 	if not leftArm then
 		warn("Left arm not found in character")
 		return
 	end
-
 	local leftGripAttachment = leftArm:FindFirstChild("LeftGripAttachment")
-
 	if not leftGripAttachment then
 		warn("LeftGripAttachment not found in Left Arm")
 		return
 	end
 
-	-- ** Camera Manipulation **
-	local originalCameraCFrame = workspace.CurrentCamera.CFrame
-	local originalCameraFieldOfView = workspace.CurrentCamera.FieldOfView
+	-- ** Camera Manipulation: Tween from Left to Right **
+
 	local camera = workspace.CurrentCamera
+	-- Save the original camera settings for later reset.
+	local originalCameraCFrame = camera.CFrame
+	local originalCameraFieldOfView = camera.FieldOfView
 
-	-- Use the rootPart's CFrame to calculate the offset relative to its facing direction
-	local cameraOffset = Vector3.new(0, 3, -15) --  Now negative Z to go behind, relative to facing direction
-	local lookAtPosition = rootPart.Position + rootPart.CFrame.LookVector * 2 + Vector3.new(0, 2, 0) -- Look slightly in front and above the rootPart
+	-- Define offsets relative to the player's local space.
+	local leftOffset = Vector3.new(5, 3, -10) -- 5 studs to the left, 3 studs up, 10 studs behind
+	local rightOffset = Vector3.new(-5, 3, -10) -- 5 studs to the right, 3 studs up, 10 studs behind
 
-	-- Calculate the camera's target position based on rootPart's CFrame and offset
-	local targetCameraPosition = rootPart.Position + rootPart.CFrame:VectorToWorldSpace(cameraOffset)
+	-- Define a common look-at point near the player.
+	local lookAtPosition = rootPart.Position + rootPart.CFrame.LookVector * 2 + Vector3.new(0, 2, 0)
 
-	-- Create the target CFrame, making the camera look at the lookAtPosition
-	local targetCFrame = CFrame.new(targetCameraPosition, lookAtPosition)
-	local targetFieldOfView = 30 -- Adjust for desired zoom level
+	-- Convert local offsets to world positions.
+	local leftCameraPosition = rootPart.Position + rootPart.CFrame:VectorToWorldSpace(leftOffset)
+	local rightCameraPosition = rootPart.Position + rootPart.CFrame:VectorToWorldSpace(rightOffset)
 
-	local tweenInfo = TweenInfo.new(
-		0.5, -- Duration of the tween
-		Enum.EasingStyle.Quad, -- Easing style
-		Enum.EasingDirection.InOut, -- Easing direction
-		0, -- Number of times to repeat
-		false, -- Should reverse
-		0 -- Delay time
-	)
+	-- Tween settings
+	local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
 
-	local cameraTween = TweenService:Create(camera, tweenInfo, {
-		CFrame = targetCFrame,
-		FieldOfView = targetFieldOfView,
+	-- First: Tween the camera to the left position.
+	local tweenToLeft = TweenService:Create(camera, tweenInfo, {
+		CFrame = CFrame.new(leftCameraPosition, lookAtPosition),
+		FieldOfView = 30, -- Adjust zoom as needed
 	})
+	tweenToLeft:Play()
 
-	cameraTween:Play()
+	-- When the tween-to-left completes, start the catch animation and tween the camera to the right.
+	tweenToLeft.Completed:Connect(function()
+		-- Play the catch animation on the player's character.
+		local CatchTrack = AnimationManager:PlayAnimation(Player.Character, "FishingRod_Catch")
+		task.wait(0.5)
+		local tweenInfoRight = TweenInfo.new(
+			1, -- Duration in seconds
+			Enum.EasingStyle.Quad,
+			Enum.EasingDirection.InOut
+		)
+		-- Now tween the camera from the left position to the right position.
+		local tweenToRight = TweenService:Create(camera, tweenInfoRight, {
+			CFrame = CFrame.new(rightCameraPosition, lookAtPosition),
+			FieldOfView = 30,
+		})
+		tweenToRight:Play()
 
-	cameraTween:Play()
-	-- Play the catch animation
-	local CatchTrack = AnimationManager:PlayAnimation(Player.Character, "FishingRod_Catch")
-
-	-- Time-based positioning of the fish on the left hand
-	local animationDuration = CatchTrack.Length
-	local handAttachmentTime = animationDuration * 0.2
-
-	task.delay(handAttachmentTime, function()
-		if not clonedFishHand or not clonedFishHand.Parent then
-			return
-		end
-
-		-- Position relative to the attachment
-		clonedFishHand:SetPrimaryPartCFrame(leftGripAttachment.WorldCFrame)
-
-		-- Weld the fish to the left hand
-		local weld = Instance.new("Weld")
-		weld.Part0 = leftArm
-		weld.Part1 = clonedFishHand.PrimaryPart
-		weld.C0 = leftGripAttachment.CFrame * CFrame.Angles(math.rad(-90), math.rad(0), math.rad(90))
-		weld.Parent = weld.Part0
-
-		clonedFishHand.PrimaryPart.Anchored = false
-		clonedFishHand.PrimaryPart.CanCollide = false
-		for i, v in pairs(clonedFishHand:GetDescendants()) do
-			if v:IsA("BasePart") then
-				v.Anchored = false
-				v.CanCollide = false
+		local animationDuration = CatchTrack.Length
+		local handAttachmentTime = animationDuration * 0.2
+		task.delay(handAttachmentTime, function()
+			if not clonedFishHand or not clonedFishHand.Parent then
+				return
 			end
-		end
+			-- Position the cloned fish relative to the left grip attachment.
+			clonedFishHand:SetPrimaryPartCFrame(leftGripAttachment.WorldCFrame)
+			-- Weld the fish to the left arm.
+			local weld = Instance.new("Weld")
+			weld.Part0 = leftArm
+			weld.Part1 = clonedFishHand.PrimaryPart
+			weld.C0 = leftGripAttachment.CFrame * CFrame.Angles(math.rad(-90), 0, math.rad(90))
+			weld.Parent = leftArm
+			-- Ensure the fish is not anchored or colliding.
+			clonedFishHand.PrimaryPart.Anchored = false
+			clonedFishHand.PrimaryPart.CanCollide = false
+			for _, v in pairs(clonedFishHand:GetDescendants()) do
+				if v:IsA("BasePart") then
+					v.Anchored = false
+					v.CanCollide = false
+				end
+			end
+		end)
+		FishingService = Knit.GetService("FishingService")
+		FishingService.Cleanup:Fire(true)
+		-- Wait for the catch animation to finish.
+		CatchTrack.Ended:Wait()
+
+		-- Reset the camera to its original state.
+		local resetCameraTween = TweenService:Create(camera, tweenInfo, {
+			CFrame = originalCameraCFrame,
+			FieldOfView = originalCameraFieldOfView,
+		})
+		resetCameraTween:Play()
+
+		-- Play subsequent animations and cleanup.
+		AnimationManager:PlayAnimation(Player.Character, "FishingRod_Equip")
+		task.wait(0.3)
+		AnimationManager:PlayAnimation(Player.Character, "FishingRod_EquipIdle", true)
+		isPlayerFishing = false
+		Player.Character.Humanoid.WalkSpeed = 16
+		clonedFishHand:Destroy()
+		Player.IsFishing.Value = false
+		task.wait(3)
+		notificationsUI.Main.Visible = false
 	end)
-	FishingService = Knit.GetService("FishingService")
-	FishingService.Cleanup:Fire(true)
-	CatchTrack.Ended:Wait()
-	SoundService:SetListener(Enum.ListenerType.Camera, nil)
-	-- ** Reset Camera **
-	local resetCameraTween = TweenService:Create(camera, tweenInfo, {
-		CFrame = originalCameraCFrame,
-		FieldOfView = originalCameraFieldOfView,
-	})
-	resetCameraTween:Play()
-	AnimationManager:PlayAnimation(Player.Character, "FishingRod_Equip")
-	task.wait(0.3)
-	AnimationManager:PlayAnimation(Player.Character, "FishingRod_EquipIdle", true)
-	isPlayerFishing = false
-	Player.Character.Humanoid.WalkSpeed = 16
-	clonedFishHand:Destroy()
-	staterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, true)
-	task.wait(3)
-	notificationsUI.Main.Visible = false
-	clonedFishImpulse:Destroy()
 end
 
 local function onMinigameFailed()
@@ -363,7 +364,7 @@ local function onMinigameFailed()
 	AnimationManager:PlayAnimation(Player.Character, "FishingRod_EquipIdle", true)
 	isPlayerFishing = false
 	Player.Character.Humanoid.WalkSpeed = 16
-	staterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, true)
+	Player.IsFishing.Value = false
 end
 local function startSecondMinigame(caughtFish)
 	if not isRodEquipped() then
@@ -395,7 +396,7 @@ local function startSecondMinigame(caughtFish)
 	end)
 	SoundService:PlayLocalSound(fishingSFX.Start_Minigame)
 	AnimationManager:PlayAnimation(Player.Character, "FishingRod_Reel", true)
-	fishingSFX.FishingReel_Minigame:Play()
+	local reelSound = fishingSFX.FishingReel_Minigame:Clone()
 	task.wait(0.2)
 	exclamationUI.Icon.Visible = false
 	task.wait(0.2)
@@ -436,6 +437,26 @@ local function startSecondMinigame(caughtFish)
 	for _, Particles in ipairs(bobber.Top.FishVFX:GetChildren()) do
 		Particles.Enabled = true
 	end
+	reelSound.Parent = rod.Handle
+	reelSound:Play()
+	-- Animate the FishVFX attachment in a circle using task.spawn
+	task.spawn(function()
+		local radius = 2
+		local rotationTime = 3
+		local startTime = tick()
+		local attachment = bobber.Top.FishVFX
+
+		-- Store the original Y offset so it remains constant
+		local originalY = attachment.Position.Y
+		-- Loop while the attachment exists
+		while attachment and attachment.Parent do
+			local elapsed = tick() - startTime
+			local angle = (elapsed / rotationTime) * (2 * math.pi)
+			attachment.Position = Vector3.new(math.cos(angle) * radius, originalY, math.sin(angle) * radius)
+			task.wait() -- Wait one frame for smooth animation
+		end
+	end)
+
 	MainFrame.Clicking.Visible = false
 
 	-- Show the second minigame's UI
@@ -552,7 +573,8 @@ local function startSecondMinigame(caughtFish)
 
 				if newGreenBarY >= 1.047 then
 					minigameGui:Destroy()
-					fishingSFX.FishingReel_Minigame:Stop()
+					reelSound:Destroy()
+
 					if spamConnection then
 						spamConnection:Disconnect()
 					end
@@ -576,7 +598,7 @@ local function startSecondMinigame(caughtFish)
 			-- Check if red bars size is greater than green bar
 			if newRedBarY >= GreenBar.Size.Y.Scale then
 				minigameGui:Destroy()
-				fishingSFX.FishingReel_Minigame:Stop()
+				reelSound:Destroy()
 				if spamConnection then
 					spamConnection:Disconnect()
 				end
@@ -603,13 +625,16 @@ end
 local function spawnFirstMinigame(caughtFish)
 	local minigameRunning = true -- Flag to indicate if the minigame is running
 	local minigameDelay = nil -- Variable to hold the task.delay coroutine
+
 	if not isRodEquipped() then
 		resetState()
 		return
 	end
+
 	if minigameGui and minigameGui.Parent then
 		minigameGui:Destroy()
 	end
+
 	SoundService:PlayLocalSound(fishingSFX.Start_Minigame)
 	minigame1finished = false
 	local playerGui = Player:WaitForChild("PlayerGui")
@@ -619,69 +644,58 @@ local function spawnFirstMinigame(caughtFish)
 	local minigameFrame = minigameGui:WaitForChild("Main"):WaitForChild("Clicking")
 
 	-- Get the button's and icon's original sizes and positions (from the TEMPLATE before cloning)
+	local NewFishIcon = minigameFrame:WaitForChild("Fish")
 	local originalButtonSize = clickButtonForMinigame.Size
 	local originalButtonPosition = clickButtonForMinigame.Position
 	local originalIconSize = clickButtonForMinigame.Icon.Size
 	local originalIconPosition = clickButtonForMinigame.Icon.Position
 
 	-- Configuration
-	local numButtons = ClickingMinigameConfig.numButtons -- Total number of buttons to spawn
+	local numButtons = ClickingMinigameConfig.numButtons -- Total number of moves/buttons
 	local buttonSpawnInterval = ClickingMinigameConfig.buttonSpawnInterval
-	local minigameDuration = numButtons * buttonSpawnInterval -- Seconds the minigame lasts
-	local neededSuccessCount = ClickingMinigameConfig.neededSuccessCount -- Number of buttons to click successfully
-	local tweenDuration = ClickingMinigameConfig.tweenDuration -- Adjust the duration of the tween as needed
+	local minigameDuration = numButtons * buttonSpawnInterval -- Total duration of the minigame
+	local neededSuccessCount = ClickingMinigameConfig.neededSuccessCount -- Number of successful clicks needed
+	local tweenDuration = ClickingMinigameConfig.tweenDuration -- Duration for tweens
 	local currentButtons = {}
 	local successCount = 0
-	-- Function to get a random position within the middle area (halved Clicking frame)
+
+	-- Function to get a random position within the middle area of the clicking frame
 	local function getRandomPosition()
-		-- Get the size of the Clicking frame
 		local frameWidth = minigameFrame.AbsoluteSize.X
 		local frameHeight = minigameFrame.AbsoluteSize.Y
 
-		-- Halve the frame size to define the middle area
 		local middleAreaWidth = frameWidth / 2
 		local middleAreaHeight = frameHeight / 2
 
-		-- Calculate the top left corner position of the middle area
 		local middleAreaX = minigameFrame.AbsolutePosition.X + (frameWidth - middleAreaWidth) / 2
 		local middleAreaY = minigameFrame.AbsolutePosition.Y + (frameHeight - middleAreaHeight) / 2
 
-		-- Calculate random position within the middle area
 		local randomX = middleAreaX + math.random(0, middleAreaWidth - clickButtonForMinigame.AbsoluteSize.X)
 		local randomY = middleAreaY + math.random(0, middleAreaHeight - clickButtonForMinigame.AbsoluteSize.Y)
 
 		return UDim2.new(0, randomX, 0, randomY)
 	end
 
-	-- Function to handle button click
+	-- Function to handle a successful button click
 	local function onButtonClicked(button)
 		if button then
-			--Tween the mouseClickEffect images size to initally 0 then to its original size then destroy, also set its position to where the players mouse is
+			SoundService:PlayLocalSound(fishingSFX.UI_Click)
+
+			-- Show a quick click effect at the mouse position
 			task.spawn(function()
 				local originalSize = mouseClickEffect.Size
 				local mouse = Player:GetMouse()
-				-- Clone the mouseClickEffect
 				local mouseClickEffectClone = mouseClickEffect:Clone()
-				mouseClickEffectClone.Parent = minigameGui -- Or some other appropriate UI container
-				mouseClickEffectClone.Size = UDim2.new(0, 0, 0, 0) -- Set initial size to 0
-				mouseClickEffectClone.Position = UDim2.new(0, mouse.X, 0, mouse.Y) -- Set position to mouse coordinates
+				mouseClickEffectClone.Parent = minigameGui
+				mouseClickEffectClone.Size = UDim2.new(0, 0, 0, 0)
+				mouseClickEffectClone.Position = UDim2.new(0, mouse.X, 0, mouse.Y)
 
-				-- Create a tween to animate the size
-				local tweenInfo = TweenInfo.new(
-					0.3, -- Duration
-					Enum.EasingStyle.Quad, -- Easing style
-					Enum.EasingDirection.Out, -- Easing direction
-					0, -- Repeat count
-					false, -- Reverses
-					0 -- Delay time
-				)
-
+				local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 0, false, 0)
 				local tween = TweenService:Create(mouseClickEffectClone, tweenInfo, { Size = originalSize })
 				tween:Play()
 
-				-- Destroy the clone after the tween finishes
 				tween.Completed:Connect(function()
-					task.wait(0.1) -- Short delay to ensure the effect is visible
+					task.wait(0.1)
 					if mouseClickEffectClone then
 						mouseClickEffectClone:Destroy()
 					end
@@ -689,15 +703,15 @@ local function spawnFirstMinigame(caughtFish)
 			end)
 
 			successCount = successCount + 1
-			table.remove(currentButtons, table.find(currentButtons, button)) -- Remove from table
+			table.remove(currentButtons, table.find(currentButtons, button))
 			button:Destroy()
 
 			if successCount >= neededSuccessCount then
 				print("Minigame successful!")
 				minigame1finished = true
-				minigameRunning = false -- Stop spawning buttons
+				minigameRunning = false
 				if minigameDelay then
-					task.cancel(minigameDelay) -- Cancel the minigame timer
+					task.cancel(minigameDelay)
 					minigameDelay = nil
 				end
 				minigameGui:Destroy()
@@ -706,90 +720,94 @@ local function spawnFirstMinigame(caughtFish)
 		end
 	end
 
-	-- Function to spawn a new button
-	local function spawnButton()
-		if minigameRunning then
-			local button = clickButtonForMinigame:Clone()
+	-- Function to spawn a button at a specific position (where the fish icon moved)
+	local function spawnButtonAtPosition(position)
+		local button = clickButtonForMinigame:Clone()
+		local icon = button:WaitForChild("Icon")
 
-			local button = clickButtonForMinigame:Clone()
-			local icon = button:WaitForChild("Icon")
-			local targetPosition = getRandomPosition()
+		button.Position = position
+		button.Size = UDim2.new(0, 0, 0, 0) -- Start with size 0 for a "pop in" effect
+		icon.Size = UDim2.new(0, 0, 0, 0)
+		icon.Position = originalIconPosition
 
-			-- ** Initial Size and Position **
-			button.Size = UDim2.new(0, 0, 0, 0) -- Start with size 0
-			button.Position = targetPosition
-			icon.Size = UDim2.new(0, 0, 0, 0) -- Start with size 0 for icon too
-			icon.Position = originalIconPosition
+		button.Parent = minigameFrame
+		button.Visible = true
+		icon.Parent = button
+		icon.Visible = true
 
-			button.Parent = minigameFrame
-			button.Visible = true
-			icon.Parent = button
-			icon.Visible = true
+		table.insert(currentButtons, button)
 
-			table.insert(currentButtons, button) -- ** Add button to the table **
+		local sizeTweenInfo = TweenInfo.new(tweenDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		local buttonSizeTween = TweenService:Create(button, sizeTweenInfo, { Size = originalButtonSize })
+		buttonSizeTween:Play()
+		local iconSizeTween = TweenService:Create(icon, sizeTweenInfo, { Size = originalIconSize })
+		iconSizeTween:Play()
 
-			-- ** Tween Info **
-			local sizeTweenInfo = TweenInfo.new(tweenDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		button.MouseButton1Click:Connect(function()
+			onButtonClicked(button)
+		end)
 
-			-- ** Create and Play Tweens for Button **
-			local buttonSizeTween = TweenService:Create(button, sizeTweenInfo, { Size = originalButtonSize })
-			buttonSizeTween:Play()
+		-- If the button isn’t clicked, shrink and destroy it after tweening
+		buttonSizeTween.Completed:Connect(function()
+			if button and button.Parent then
+				local shrinkTweenInfo = TweenInfo.new(tweenDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+				local buttonShrinkTween = TweenService:Create(button, shrinkTweenInfo, { Size = UDim2.new(0, 0, 0, 0) })
+				buttonShrinkTween:Play()
+				local iconShrinkTween = TweenService:Create(icon, shrinkTweenInfo, { Size = UDim2.new(0, 0, 0, 0) })
+				iconShrinkTween:Play()
 
-			-- ** Create and Play Tweens for Icon **
-			local iconSizeTween = TweenService:Create(icon, sizeTweenInfo, { Size = originalIconSize })
-			iconSizeTween:Play()
-
-			-- Connect click event
-			button.MouseButton1Click:Connect(function()
-				onButtonClicked(button)
-			end)
-
-			-- Timer to tween the button and icon back to size 0 if not clicked
-			buttonSizeTween.Completed:Connect(function()
-				if button and button.Parent then
-					local shrinkTweenInfo = TweenInfo.new(tweenDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-
-					-- ** Create and Play Shrink Tweens for Button **
-					local buttonShrinkTween =
-						TweenService:Create(button, shrinkTweenInfo, { Size = UDim2.new(0, 0, 0, 0) })
-					buttonShrinkTween:Play()
-
-					-- ** Create and Play Shrink Tweens for Icon **
-					local iconShrinkTween = TweenService:Create(icon, shrinkTweenInfo, { Size = UDim2.new(0, 0, 0, 0) })
-					iconShrinkTween:Play()
-
-					buttonShrinkTween.Completed:Connect(function()
-						if button and button.Parent then
-							table.remove(currentButtons, table.find(currentButtons, button)) -- Remove from table
-							button:Destroy()
-						end
-					end)
-				end
-			end)
-		end
+				buttonShrinkTween.Completed:Connect(function()
+					if button and button.Parent then
+						table.remove(currentButtons, table.find(currentButtons, button))
+						button:Destroy()
+					end
+				end)
+			end
+		end)
 	end
 
-	-- Spawn multiple buttons with slight delays
-	for i = 1, numButtons do
-		if not minigameRunning then
-			break
-		end -- Exit the loop if minigame is not running
-		spawnButton()
-		task.wait(buttonSpawnInterval) -- Wait for a short interval before spawning the next button
+	-- Function to move the fish icon along the path and then spawn a button at its new location
+	local function moveFishIconAndSpawnButton()
+		NewFishIcon.Visible = true
+		local targetPosition = getRandomPosition()
+		local tweenInfo = TweenInfo.new(tweenDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		local fishTween = TweenService:Create(NewFishIcon, tweenInfo, { Position = targetPosition })
+		fishTween:Play()
+		local shakeRotationIntensity = 15
+		local shaking = true
+		fishTween.Completed:Connect(function()
+			shaking = false
+			spawnButtonAtPosition(NewFishIcon.Position)
+		end)
+		spawn(function()
+			while shaking do
+				local randomRotation = math.random(-shakeRotationIntensity, shakeRotationIntensity)
+				NewFishIcon.Rotation = randomRotation
+				task.wait(0.05)
+			end
+			NewFishIcon.Rotation = 0
+		end)
 	end
-
-	-- Minigame timer
+	-- End-of-minigame timer
 	minigameDelay = task.delay(minigameDuration, function()
 		if minigameGui and minigameGui.Parent then
 			if successCount < neededSuccessCount and not minigame1finished then
 				print("Minigame failed!")
-				onMinigameFailed()
+				startSecondMinigame(caughtFish)
 				minigame1finished = true
-				minigameRunning = false -- Stop spawning buttons
-				minigameGui:Destroy()
+				minigameRunning = false
 			end
 		end
 	end)
+	-- Instead of spawning buttons at random locations directly,
+	-- move the fish icon and then spawn a button at its destination.
+	for i = 1, numButtons do
+		if not minigameRunning then
+			break
+		end
+		moveFishIconAndSpawnButton()
+		task.wait(buttonSpawnInterval)
+	end
 end
 
 local function showTextForBar(endedAtPower)
@@ -797,17 +815,39 @@ local function showTextForBar(endedAtPower)
 	ThrowQualityUI.Parent = Player.Character.Head
 	ThrowQualityUI.Main.Background.Visible = true
 	ThrowQualityUI.Main.Visible = true
+	local VFXFolder = ReplicatedStorage:WaitForChild("Fx")
+	local baseCFrame = Player.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0.5, 0)
 	if endedAtPower > 1.8 then
 		ThrowQualityUI.Main["Amazing!"].Visible = true
 		SoundService:PlayLocalSound(fishingSFX.Amazing)
+		local FX = VFXFolder.Amazing:Clone()
+		FX.Parent = Player.Character
+		FX:SetPrimaryPartCFrame(baseCFrame * CFrame.Angles(0, math.rad(90), 0))
+		task.wait(2)
+		FX:Destroy()
 	elseif endedAtPower > 1.2 then
 		ThrowQualityUI.Main["Great!"].Visible = true
 		SoundService:PlayLocalSound(fishingSFX.Great)
+		local FX = VFXFolder.Good:Clone()
+		FX.Parent = Player.Character
+		FX:SetPrimaryPartCFrame(baseCFrame * CFrame.Angles(0, math.rad(90), 0))
+		task.wait(2)
+		FX:Destroy()
 	elseif endedAtPower > 0.6 then
 		ThrowQualityUI.Main["Good"].Visible = true
 		SoundService:PlayLocalSound(fishingSFX.Okay)
+		local FX = VFXFolder.Okay:Clone()
+		FX.Parent = Player.Character
+		FX:SetPrimaryPartCFrame(baseCFrame * CFrame.Angles(0, math.rad(90), 0))
+		task.wait(2)
+		FX:Destroy()
 	else
 		ThrowQualityUI.Main["Bad."].Visible = true
+		local FX = VFXFolder.Bad:Clone()
+		FX.Parent = Player.Character
+		FX:SetPrimaryPartCFrame(baseCFrame * CFrame.Angles(0, math.rad(90), 0))
+		task.wait(2)
+		FX:Destroy()
 		SoundService:PlayLocalSound(fishingSFX.Bad)
 	end
 	task.wait(1.5)
@@ -868,7 +908,7 @@ UserInputService.InputEnded:Connect(function(input, gameProcessedEvent)
 		task.spawn(function()
 			showTextForBar(endedAtPower)
 		end)
-		staterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
+		Player.IsFishing.Value = true
 		AnimationManager:StopAnimations(Player.Character)
 		local track = AnimationManager:PlayAnimation(Player.Character, "FishingRod_Throw")
 		track.Stopped:Wait()
@@ -888,7 +928,7 @@ local function EndAnimationsIfNoWater()
 	if not hasEquippedRod then
 		return
 	end
-	staterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, true)
+	Player.IsFishing.Value = false
 	task.wait(3)
 	AnimationManager:StopAnimations(Player.Character)
 	AnimationManager:PlayAnimation(Player.Character, "FishingRod_Equip")

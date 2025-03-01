@@ -37,8 +37,8 @@ end
 function StateController:UpdateCoins(coins: number)
 	PlayerData.Coins = coins
 end
-function StateController:UpdateStars(stars: number)
-	PlayerData.Stars = stars
+function StateController:UpdateGems(gems: number)
+	PlayerData.Gems = gems
 end
 function StateController:UpdateExp(exp: number)
 	PlayerData.Exp = exp
@@ -48,6 +48,9 @@ function StateController:UpdateLevel(level: number)
 end
 function StateController:UpdateFishes(fishes: table)
 	PlayerData.fishes = fishes
+end
+function StateController:UpdateRod(rodName)
+	PlayerData[rodName] = true
 end
 function StateController:ResetData(data)
 	PlayerData = data

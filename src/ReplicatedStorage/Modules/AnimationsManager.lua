@@ -27,9 +27,10 @@ function AnimationManager:LoadAnimations(character, animations)
 		local animation = Instance.new("Animation")
 		animation.AnimationId = "rbxassetid://" .. animId
 		local track = animator:LoadAnimation(animation)
-		if animName:sub(-4) == "Idle" or animName:sub(-5) == "Equip" then
+		--[[if animName:sub(-4) == "Idle" or animName:sub(-5) == "Equip" then
 			track.Priority = Enum.AnimationPriority.Action
-		end
+		end]]
+		--
 		self.LoadedAnimations[character][animName] = track
 		animation:Destroy()
 	end
@@ -39,9 +40,10 @@ end
 function AnimationManager:PlayAnimation(character, animationName, loop, fadeTime)
 	local hasEquippedRod = isRodEquipped(character)
 
-	if not hasEquippedRod then
+	--[[if not hasEquippedRod then
 		return
-	end
+	end]]
+	--
 
 	local animationTrack = self:GetAnimationTrack(character, animationName)
 

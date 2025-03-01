@@ -2,7 +2,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Template = {
 	Coins = 0,
-	Stars = 0,
+	Gems = 0,
 	Exp = 0,
 	Level = 1,
 
@@ -12,6 +12,11 @@ local Template = {
 		currentQuestId = 1,
 		progress = 0,
 	},
+	units = {},
+	currentEquippedRod = "None",
+	BasicRod = false,
+	TestingRod = true,
+	Makeshift_Rod = true,
 }
 
 export type PlayerData = typeof(Template)

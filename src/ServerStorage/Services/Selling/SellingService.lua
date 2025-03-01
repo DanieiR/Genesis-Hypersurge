@@ -9,6 +9,8 @@ local SellingSerivce = Knit.CreateService({
 		InitiateNPCDialogue = Knit.CreateSignal(),
 		SellAllRequest = Knit.CreateSignal(),
 		SellEquippedRequest = Knit.CreateSignal(),
+		SellFromSellMode = Knit.CreateSignal(),
+		SellUnitsFromSellMode = Knit.CreateSignal(),
 	},
 })
 
@@ -76,6 +78,49 @@ function SellingSerivce:_SellEquipped(Player: Player)
 		end
 	end
 end
+function SellingSerivce:_SellClicked(Player: Player, fishes)
+	print("Reach")
+	local profile = Manager.Profiles[Player]
+	if not profile then
+		return
+	end
+
+	-- Collect all unlockable fish IDs
+	local fishIdsToSell = {}
+	for _, fish in ipairs(fishes) do
+		if not fish.locked then
+			table.insert(fishIdsToSell, fish.ID)
+		end
+	end
+
+	-- Use Manager.SellFishes for atomic operation
+	local totalEarnings, soldCount = Manager.SellFishes(Player, fishIdsToSell)
+
+	if soldCount > 0 then
+		-- Destroy fish tools if any were equipped
+		self:_RemoveFishTools(Player)
+		print(`Sold {soldCount} fish(es) for {totalEarnings} coins`)
+	end
+end
+function SellingSerivce:SellUnits(Player: Player, units)
+	local profile = Manager.Profiles[Player]
+	if not profile then
+		return
+	end
+
+	-- Collect all unlockable fish IDs
+	local unitIdsToSell = {}
+	for _, Unit in ipairs(units) do
+		if not Unit.isLocked then
+			table.insert(unitIdsToSell, Unit.ID)
+		end
+	end
+	print(unitIdsToSell)
+	-- Use Manager.SellFishes for atomic operation
+	local totalEarnings, soldCount = Manager.SellUnits(Player, unitIdsToSell)
+
+	print(`Sold {soldCount} unit(s) for {totalEarnings} coins`)
+end
 
 function SellingSerivce:KnitStart()
 	self.Client.SellAllRequest:Connect(function(player)
@@ -83,6 +128,12 @@ function SellingSerivce:KnitStart()
 	end)
 	self.Client.SellEquippedRequest:Connect(function(player)
 		self:_SellEquipped(player)
+	end)
+	self.Client.SellFromSellMode:Connect(function(player, ID)
+		self:_SellClicked(player, ID)
+	end)
+	self.Client.SellUnitsFromSellMode:Connect(function(player, ID)
+		self:SellUnits(player, ID)
 	end)
 end
 

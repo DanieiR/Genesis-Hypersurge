@@ -64,7 +64,7 @@ function QuestService:CompleteQuest(player)
 
 	-- Award rewards
 	Manager:AdjustCoins(player, currentQuest.Reward.Coins)
-	Manager:AdjustStars(player, currentQuest.Reward.Stars)
+	Manager:AdjustStars(player, currentQuest.Reward.Gems)
 
 	-- Assign next quest
 	local nextQuestId = questData.currentQuestId + 1
@@ -94,7 +94,6 @@ function QuestService:AssignQuest(player, questId)
 end
 
 function QuestService:OnFishAdded(player, fish)
-	print(player, fish)
 	local questData = Manager:GetQuestData(player)
 	if not questData then
 		return
@@ -112,17 +111,19 @@ end
 -- Connect fishing events
 function QuestService:KnitStart()
 	Players.PlayerAdded:Connect(function(player)
-		task.wait(5)
-		-- If new player, set first quest
 		local questData = Manager:GetQuestData(player)
-		print(questData)
-		if not questData.currentQuestId then
+		while not questData do
+			task.wait() -- Wait a frame before checking again
+			questData = Manager:GetQuestData(player)
+		end
+
+		-- If the data indicates a new player, set the first quest.
+		if not questData then
 			Manager:SetCurrentQuest(player, 1)
 		end
 
-		-- Load initial state
-		local state = self:LoadPlayerQuest(player)
-		self.Client.QuestUpdated:Fire(player, state.quest, state.progress)
+		local state = QuestService:LoadPlayerQuest(player)
+		QuestService.Client.QuestUpdated:Fire(player, state.quest, state.progress)
 	end)
 
 	Players.PlayerRemoving:Connect(function(player)

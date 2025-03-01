@@ -23,22 +23,29 @@ local animations = {
 	["FishingRod_Throw"] = 79780231544605,
 	["FishingRod_Hold"] = 123045284933073,
 	["FishingRod_Idle"] = 91317673046419,
-	["FishingRod_Catch"] = 134968993757108,
+	["FishingRod_Catch"] = 131234871868461,
 	["FishingRod_Reel"] = 123864382311991,
+	["Small_Fish_Idle"] = 70986970163484,
+	["Medium_Fish_Idle"] = 86336426978956,
+	["Large_Fish_Idle"] = 93198601000295,
 }
 
 -- Function to handle tool equipping
 local function onToolEquipped(tool)
 	if tool.Name:sub(-3) == "Rod" then
-		AnimationManager:PlayAnimation(character, "FishingRod_Equip")
+		--AnimationManager:PlayAnimation(character, "FishingRod_Equip")
 		task.wait(0.3)
 		AnimationManager:PlayAnimation(character, "FishingRod_EquipIdle", true)
+	else
+		AnimationManager:PlayAnimation(character, "Small_Fish_Idle", true)
 	end
 end
 
 -- Function to handle tool unequipping
 local function onToolUnequipped(tool)
 	if tool.Name:sub(-3) == "Rod" then
+		AnimationManager:StopAnimations(character, 0.2)
+	else
 		AnimationManager:StopAnimations(character, 0.2)
 	end
 end

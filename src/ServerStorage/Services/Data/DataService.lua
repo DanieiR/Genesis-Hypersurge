@@ -12,14 +12,16 @@ local DataService = Knit.CreateService({
 		UpdateCoins = Knit.CreateSignal(),
 		UpdateStars = Knit.CreateSignal(),
 		UpdateFishes = Knit.CreateSignal(),
+		UpdateUnits = Knit.CreateSignal(),
 		UpdateExp = Knit.CreateSignal(),
 		LevelUp = Knit.CreateSignal(),
 		ResetData = Knit.CreateSignal(),
+		RodUpdate = Knit.CreateSignal(),
 	},
 })
 local ProfileTemplate = require(ReplicatedStorage.Source.PlayerData.Template)
 
-local ProfileStore = ProfileService.GetProfileStore("PlayerData26", ProfileTemplate)
+local ProfileStore = ProfileService.GetProfileStore("PlayerData46", ProfileTemplate)
 
 local function giveLeaderStats(player)
 	local profile = Manager.Profiles[player]
@@ -32,9 +34,17 @@ local function giveLeaderStats(player)
 	local Coins = Instance.new("NumberValue")
 	Coins.Parent = leaderstats
 	Coins.Name = "Coins"
-	local Stars = Instance.new("NumberValue")
-	Stars.Parent = leaderstats
-	Stars.Name = "Stars"
+	local Gems = Instance.new("NumberValue")
+	Gems.Parent = leaderstats
+	Gems.Name = "Gems"
+	local Level = Instance.new("NumberValue")
+	Level.Parent = leaderstats
+	Level.Name = "Level"
+	Level.Value = profile.Data.Level
+	local FishingState = Instance.new("BoolValue")
+	FishingState.Name = "IsFishing"
+	FishingState.Value = false
+	FishingState.Parent = player
 end
 
 function PlayerAdded(player)

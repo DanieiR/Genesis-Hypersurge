@@ -8,10 +8,8 @@ local DayNightCycle = Knit.CreateService({
 	Client = {},
 })
 
--- Define the rate of change.
--- We want the clock to advance 12 hours over 60 seconds.
--- That is: 12 / 60 = 0.2 hours per second.
-local HOURS_PER_SECOND = 12 / 60
+-- For a full cycle (24 hours) in 30 minutes (1800 seconds):
+local HOURS_PER_SECOND = 24 / 1800 -- ≈ 0.01333 hours per second
 
 function DayNightCycle:StartCycle()
 	while true do
@@ -21,7 +19,7 @@ function DayNightCycle:StartCycle()
 end
 
 function DayNightCycle:KnitStart()
-	spawn(function()
+	task.spawn(function()
 		self:StartCycle()
 	end)
 end

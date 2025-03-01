@@ -51,7 +51,7 @@ local function createPositioningWeld(torso, handle)
 	weld.Part0 = torso
 	weld.Part1 = handle
 	weld.Parent = handle
-	-- Adjust C0 for R6 (your adjusted values)
+	-- Adjust C0 for R6
 	weld.C0 = CFrame.new(1, -1, 0.55) * CFrame.Angles(math.rad(-90), math.rad(50), math.rad(90))
 	return weld
 end
@@ -146,7 +146,7 @@ function RodWelds:KnitStart()
 					weldHandleToCharacter(character, tool)
 					local bobber = ReplicatedStorage:WaitForChild("Bobbers"):WaitForChild("Bobber"):Clone()
 					bobber.Parent = character
-					weldToTorso(character, bobber)
+					--weldToTorso(character, bobber)
 				end
 			end
 

@@ -38,11 +38,11 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local currencyFrame = getGuiElement(playerGui, "PlayerHUD", "Main", "Currency")
 local coinsText = getGuiElement(currencyFrame, "Coins", "CurrencyAmount")
-local starsText = getGuiElement(currencyFrame, "Stars", "CurrencyAmount")
-local coinsIconForTweening = getGuiElement(playerGui, "PlayerHUD", "Main", "CoinsIconForTweens")
+local gemsText = getGuiElement(currencyFrame, "Gems", "CurrencyAmount")
+local coinIconForTweens = getGuiElement(playerGui, "PlayerHUD", "Main", "CoinsIconForTweens")
 local coinsFullImage = getGuiElement(currencyFrame, "Coins")
-local starsIconForTweening = getGuiElement(playerGui, "PlayerHUD", "Main", "StarsIconForTweens")
-local starsFullImage = getGuiElement(currencyFrame, "Stars")
+local gemsIconForTweening = getGuiElement(playerGui, "PlayerHUD", "Main", "GemsIconForTweens")
+local gemsFullImage = getGuiElement(currencyFrame, "Gems")
 local COUNT_UP_DURATION = 1.5
 local ICON_SCALE_INTENSITY = 1.2
 local ICON_SCALE_TWEEN_INFO = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
@@ -58,8 +58,8 @@ local function getRandomPosition(Image)
 	local frameWidth = currencyFrame.Parent.AbsoluteSize.X
 	local frameHeight = currencyFrame.Parent.AbsoluteSize.Y
 
-	local middleAreaWidth = frameWidth / 2
-	local middleAreaHeight = frameHeight / 2
+	local middleAreaWidth = frameWidth / 1
+	local middleAreaHeight = frameHeight / 1
 
 	local middleAreaX = currencyFrame.Parent.AbsolutePosition.X + (frameWidth - middleAreaWidth) / 2
 	local middleAreaY = currencyFrame.Parent.AbsolutePosition.Y + (frameHeight - middleAreaHeight) / 2
@@ -69,11 +69,101 @@ local function getRandomPosition(Image)
 
 	return UDim2.new(0, randomX, 0, randomY)
 end
+function CurrencyController:PlayMultipleCoinTweens(gainedAmount)
+	local numClones = 30
+	for i = 1, numClones do
+		local clone = coinIconForTweens:Clone()
+		clone.Parent = coinIconForTweens.Parent
+		clone.Visible = true
 
+		local amountLabel = clone:FindFirstChild("CurrencyAmount")
+		if amountLabel then
+			amountLabel.Text = "+" .. self:FormatCurrency(gainedAmount)
+		end
+
+		local mainFrame = playerGui.PlayerHUD.Main
+		local targetPosition = UDim2.new(
+			coinsText.AbsolutePosition.X / mainFrame.AbsoluteSize.X,
+			0,
+			coinsText.AbsolutePosition.Y / mainFrame.AbsoluteSize.Y,
+			0
+		)
+
+		clone.Position = getRandomPosition(clone)
+		clone.AnchorPoint = Vector2.new(0.5, 0.5)
+		clone.Size = UDim2.new(0, 100, 0, 100)
+		clone.ImageTransparency = 0
+		if amountLabel then
+			amountLabel.TextTransparency = 0
+		end
+
+		local hoverDelay = math.random(300, 800) / 1000
+
+		-- Create tween with delay in its TweenInfo.
+		local tweenInfo = TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 0, false, hoverDelay)
+		local tweenGoals = {
+			Position = targetPosition,
+			Size = UDim2.new(0, 20, 0, 20),
+		}
+		local tween = TweenService:Create(clone, tweenInfo, tweenGoals)
+		tween:Play()
+
+		-- Cleanup after tween completes.
+		tween.Completed:Connect(function()
+			clone:Destroy()
+		end)
+	end
+end
+
+function CurrencyController:PlayMultipleStarTweens(gainedAmount)
+	local numClones = 30
+	for i = 1, numClones do
+		local clone = gemsIconForTweening:Clone()
+		clone.Parent = gemsIconForTweening.Parent
+		clone.Visible = true
+
+		local amountLabel = clone:FindFirstChild("CurrencyAmount")
+		if amountLabel then
+			amountLabel.Text = "+" .. self:FormatCurrency(gainedAmount)
+		end
+
+		local mainFrame = playerGui.PlayerHUD.Main
+		local targetPosition = UDim2.new(
+			gemsText.AbsolutePosition.X / mainFrame.AbsoluteSize.X,
+			0,
+			gemsText.AbsolutePosition.Y / mainFrame.AbsoluteSize.Y,
+			0
+		)
+
+		clone.Position = getRandomPosition(clone)
+		clone.AnchorPoint = Vector2.new(0.5, 0.5)
+		clone.Size = UDim2.new(0, 100, 0, 100)
+		clone.ImageTransparency = 0
+		if amountLabel then
+			amountLabel.TextTransparency = 0
+		end
+
+		local hoverDelay = math.random(300, 800) / 1000
+
+		-- Create tween with delay in its TweenInfo.
+		local tweenInfo = TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 0, false, hoverDelay)
+		local tweenGoals = {
+			Position = targetPosition,
+			Size = UDim2.new(0, 20, 0, 20),
+		}
+		local tween = TweenService:Create(clone, tweenInfo, tweenGoals)
+		tween:Play()
+
+		-- Cleanup after tween completes.
+		tween.Completed:Connect(function()
+			clone:Destroy()
+		end)
+	end
+end
 function CurrencyController:PlayStarTween(gainedAmount)
 	-- Clone the tween template for stars
-	local clone = starsIconForTweening:Clone()
-	clone.Parent = starsIconForTweening.Parent
+	local clone = gemsIconForTweening:Clone()
+	clone.Parent = gemsIconForTweening.Parent
 	clone.Visible = true
 
 	-- Set up text display
@@ -85,9 +175,9 @@ function CurrencyController:PlayStarTween(gainedAmount)
 	-- Calculate positions: using starsText here
 	local mainFrame = playerGui.PlayerHUD.Main
 	local targetPosition = UDim2.new(
-		starsText.AbsolutePosition.X / mainFrame.AbsoluteSize.X,
+		gemsText.AbsolutePosition.X / mainFrame.AbsoluteSize.X,
 		0,
-		starsText.AbsolutePosition.Y / mainFrame.AbsoluteSize.Y,
+		gemsText.AbsolutePosition.Y / mainFrame.AbsoluteSize.Y,
 		0
 	)
 
@@ -120,7 +210,7 @@ end
 -- Function to animate the star icon scaling
 function CurrencyController:AnimateStarIconScale()
 	-- Store original size
-	local baseSize = starsFullImage.Size
+	local baseSize = gemsFullImage.Size
 	local scaleFactor = ICON_SCALE_INTENSITY
 
 	-- Calculate scaled size using UDim2.new()
@@ -137,13 +227,13 @@ function CurrencyController:AnimateStarIconScale()
 	end
 
 	-- Create scale animation for stars
-	self.currentScaleTweenStars = TweenService:Create(starsFullImage, ICON_SCALE_TWEEN_INFO, {
+	self.currentScaleTweenStars = TweenService:Create(gemsFullImage, ICON_SCALE_TWEEN_INFO, {
 		Size = scaledSize,
 	})
 
 	-- Chain the scale back animation
 	self.currentScaleTweenStars.Completed:Once(function()
-		local scaleBackTween = TweenService:Create(starsFullImage, ICON_SCALE_TWEEN_INFO, {
+		local scaleBackTween = TweenService:Create(gemsFullImage, ICON_SCALE_TWEEN_INFO, {
 			Size = baseSize,
 		})
 		scaleBackTween:Play()
@@ -154,8 +244,8 @@ end
 
 function CurrencyController:PlayCoinTween(gainedAmount)
 	-- Clone the tween template
-	local clone = coinsIconForTweening:Clone()
-	clone.Parent = coinsIconForTweening.Parent
+	local clone = gemsIconForTweening:Clone()
+	clone.Parent = gemsIconForTweening.Parent
 	clone.Visible = true
 
 	-- Set up text display
@@ -314,7 +404,7 @@ function CurrencyController:UpdateCurrency(currencyType)
 
 	-- Get previous amount with fallback
 	local lastAmount = self._lastAmounts[currencyType] or 0
-	local textElement = currencyType == "Coins" and coinsText or starsText
+	local textElement = currencyType == "Coins" and coinsText or gemsText
 
 	-- Validate text element
 	if not textElement or not textElement:IsA("TextLabel") then
@@ -333,12 +423,16 @@ function CurrencyController:UpdateCurrency(currencyType)
 		if isGain then
 			if currencyType == "Coins" then
 				local gainedAmount = newAmount - lastAmount
-				self:PlayCoinTween(gainedAmount)
+				task.spawn(function()
+					self:PlayMultipleCoinTweens(gainedAmount)
+				end)
 				self:AnimateCountUp(textElement, lastAmount, newAmount)
 				self:AnimateIconScale()
-			elseif currencyType == "Stars" then
+			elseif currencyType == "Gems" then
 				local gainedAmount = newAmount - lastAmount
-				self:PlayStarTween(gainedAmount)
+				task.spawn(function()
+					self:PlayMultipleStarTweens(gainedAmount)
+				end)
 				self:AnimateCountUp(textElement, lastAmount, newAmount)
 				self:AnimateStarIconScale()
 			end
@@ -355,8 +449,8 @@ function CurrencyController:UpdateCoins()
 	self:UpdateCurrency("Coins")
 end
 
-function CurrencyController:UpdateStars()
-	self:UpdateCurrency("Stars")
+function CurrencyController:UpdateGems()
+	self:UpdateCurrency("Gems")
 end
 
 function CurrencyController:KnitStart()
@@ -371,17 +465,17 @@ function CurrencyController:KnitStart()
 	local initialData = StateController.GetData()
 	self._lastAmounts = {
 		Coins = tonumber(initialData.Coins) or 0,
-		Stars = tonumber(initialData.Stars) or 0,
+		Gems = tonumber(initialData.Gems) or 0,
 	}
 
 	-- Initial UI update without animation
 	coinsText.Text = self:FormatCurrency(self._lastAmounts.Coins)
-	starsText.Text = self:FormatCurrency(self._lastAmounts.Stars)
+	gemsText.Text = self:FormatCurrency(self._lastAmounts.Gems)
 
 	-- Regular updates
 	while task.wait(0.5) do
 		self:UpdateCoins()
-		self:UpdateStars()
+		self:UpdateGems()
 	end
 end
 

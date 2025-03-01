@@ -19,6 +19,7 @@ local FishingService = Knit.CreateService({
 		Cleanup = Knit.CreateSignal(),
 		FishingSuccess = Knit.CreateSignal(),
 		ThrowBobber = Knit.CreateSignal(),
+		ThrowFish = Knit.CreateSignal(),
 	},
 })
 function FishingService:GenerateNumericFishId()
@@ -38,7 +39,7 @@ function FishingService:StartFishing(player)
 	caughtFish.ID = self:GenerateNumericFishId()
 	caughtFish.equipped = false
 	caughtFish.locked = false
-
+	caughtFish.weight = math.random(caughtFish.weight, caughtFish.weight + 10)
 	-- Store fish in temporary table
 	local tempFishStore = { caughtFish }
 
@@ -125,7 +126,7 @@ function FishingService:AttachBobberToLine(Player)
 	--(1-t)^2 * P0 + 2 * (1-t) * t * P1 + t^2 * P2
 	--Very smooth!
 	local StartPos = attachment0.WorldPosition
-	local EndPoint = character.HumanoidRootPart.CFrame * CFrame.new(0, -10, -30)
+	local EndPoint = character.HumanoidRootPart.CFrame * CFrame.new(0, -10, -20)
 	local MidPoint = (StartPos + EndPoint.Position) / 2 + Vector3.new(0, 30, 0)
 
 	local bobberLanded = false
@@ -143,7 +144,7 @@ function FishingService:AttachBobberToLine(Player)
 
 		-- Move the dummy part along the trajectory
 		dummyPart.Position = quad
-		rope.Length = (attachment0.WorldPosition - dummyAttachment.WorldPosition).Magnitude
+		rope.Length = (attachment0.WorldPosition - dummyAttachment.WorldPosition).Magnitude + 1
 
 		local raycastParams = RaycastParams.new()
 		raycastParams.FilterType = Enum.RaycastFilterType.Whitelist
@@ -153,47 +154,109 @@ function FishingService:AttachBobberToLine(Player)
 		local rayDirection = Vector3.new(0, -1, 0)
 		local raycastResult = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
 		if raycastResult and raycastResult.Instance.Name == "Terrain" then
-			bobberModel.PrimaryPart.Anchored = false
 			bobberLanded = true
 			local waterHitPosition = raycastResult.Position
 			local aboveWaterPosition = waterHitPosition + Vector3.new(0, 1, 0) -- 1 stud above the water
-			bobberModel:PivotTo(CFrame.new(aboveWaterPosition))
-			for _, part in ipairs(bobberModel:GetChildren()) do
-				if part:IsA("BasePart") then
-					part.Massless = false
-				end
-			end
-			character.HumanoidRootPart.Anchored = false
+			local rotationOffset = CFrame.Angles(0, math.rad(-180), 0)
+			local uprightCFrame = CFrame.new(aboveWaterPosition) * rotationOffset
+			bobberModel:PivotTo(uprightCFrame)
+			bobberModel.PrimaryPart.Anchored = false
+			local bodyForce = Instance.new("BodyForce", bobberModel.Bottom)
+			bodyForce.Force = Vector3.new(0, bobberModel.PrimaryPart:GetMass() * workspace.Gravity, 0)
+
 			break
 		end
 
 		bobberModel:PivotTo(CFrame.new(quad))
 		task.wait()
 	end
-	bobberModel.PrimaryPart.Anchored = false
 	character.HumanoidRootPart.Anchored = false
 	if bobberLanded then
 		-- Connect the rope to the actual bobber attachment
 		rope.Attachment1 = bobberAttachment
 		rope.Length = (attachment0.WorldPosition - bobberAttachment.WorldPosition).Magnitude
-
 		-- Bobber is above water
 		fishingSFX.BobberLands:Play()
 		print("Fishing started for player:", Player.Name)
 		self:StartFishing(Player)
 		bobberModel.Top.Attachment.splash.Enabled = true
+		bobberModel.PrimaryPart.Anchored = false
 	else
 		warn("Bobber did not reach water within the maximum rope length")
 		bobberModel:Destroy()
-		--local RodWelds = Knit.GetService("RodWelds")
-		--RodWelds:addBobberToRod(Player, rod)
 		self.Client.NoWater:Fire(Player)
 	end
 	dummyPart:Destroy()
 end
+function FishingService:_ThrowFishTowardsPlayer(Player, Fish)
+	-- Get the fish model from ReplicatedStorage and clone it
+	local caughtFishModel = ReplicatedStorage.Fishes:FindFirstChild(Fish.fish)
+	if not caughtFishModel then
+		warn("Fish model not found in ReplicatedStorage.Fishes")
+		return
+	end
+	caughtFishModel = caughtFishModel:Clone()
+	caughtFishModel.Parent = workspace
+
+	-- Ensure the fish model has a PrimaryPart (or pick a suitable BasePart)
+	local primaryPart = caughtFishModel.PrimaryPart or caughtFishModel:FindFirstChildWhichIsA("BasePart")
+	if not primaryPart then
+		warn("No PrimaryPart or BasePart found in the fish model")
+		return
+	end
+	caughtFishModel.PrimaryPart = primaryPart
+
+	local character = Player.Character
+	if not character then
+		warn("Player has no character")
+		return
+	end
+
+	local playerRoot = character:FindFirstChild("HumanoidRootPart")
+	if not playerRoot then
+		warn("HumanoidRootPart not found in player's character")
+		return
+	end
+	local rod = character:FindFirstChildWhichIsA("Tool")
+	if not rod then
+		warn("Rod not found in character")
+		return
+	end
+	local bobber = rod:FindFirstChild("Bobber")
+	-- Get start and end positions
+	local startPos = bobber.Top.Position + Vector3.new(0, 1, 3)
+	local endPos = playerRoot.Position
+	caughtFishModel:SetPrimaryPartCFrame(bobber.Top.CFrame + Vector3.new(0, 1, 3))
+	-- Define a control point for the arc (you can adjust the upward offset as desired)
+	local midPoint = (startPos + endPos) / 2 + Vector3.new(0, 30, 0)
+
+	-- Animation parameters
+	local duration = 1.5 -- seconds
+	local startTime = tick()
+	local t = 0
+	caughtFishModel.PrimaryPart.Anchored = true
+	-- Animate using a quadratic Bezier curve
+	while t < 1 do
+		t = math.clamp((tick() - startTime) / duration, 0, 1)
+		local oneMinusT = 1 - t
+
+		-- Quadratic Bezier interpolation
+		local pos = (oneMinusT * oneMinusT * startPos) + (2 * oneMinusT * t * midPoint) + (t * t * endPos)
+
+		-- Update the fish model's position
+		caughtFishModel:SetPrimaryPartCFrame(CFrame.new(pos))
+
+		task.wait() -- wait a frame for a smooth update
+	end
+	caughtFishModel.PrimaryPart.Anchored = false
+	task.wait(5)
+	caughtFishModel:Destroy()
+end
+
 function FishingService:Main(player)
 	self:AttachBobberToLine(player)
 end
+
 function FishingService:PerformCleanup(player, success)
 	if CurrentBobber[player] then
 		CurrentBobber[player]:Destroy()
@@ -215,6 +278,11 @@ function FishingService:KnitStart()
 	end)
 	self.Client.Cleanup:Connect(function(player, success)
 		self:PerformCleanup(player)
+	end)
+	self.Client.ThrowFish:Connect(function(player, fishModel)
+		task.spawn(function()
+			self:_ThrowFishTowardsPlayer(player, fishModel)
+		end)
 	end)
 end
 

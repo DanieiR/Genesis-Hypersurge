@@ -27,7 +27,6 @@ local TweenService = game:GetService("TweenService")
 ]]
 local FISH_TEMPLATE_NAME = "UniversalTemplate"
 local VIEWPORT_FISHES_NAME = "ViewportFishes"
-local CAMERA_DISTANCE_MULTIPLIER = 0.8 -- Adjust based on model sizes
 local INITIALIZATION_DELAY = 3 -- Seconds before first population
 
 local RARITY_GRADIENTS = {
@@ -38,7 +37,7 @@ local RARITY_GRADIENTS = {
 		}),
 		Rotation = 0, -- Horizontal gradient
 	},
-	Rare = {
+	Uncommon = {
 		Color = ColorSequence.new({
 			ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 100, 255)),
 			ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 50, 150)),
@@ -89,7 +88,15 @@ function FishInventoryController:_InitializeReferences()
 	self._fishesScrollingFrame = ScrollingFrameHolder:WaitForChild("IndexScrollingFrame")
 	self._fishTemplate = ScrollingFrameHolder:WaitForChild(FISH_TEMPLATE_NAME)
 	self._searchTextBox = FishMainFrame:WaitForChild("SearchBar"):WaitForChild("TextBox")
-
+	self._sellModeButton = FishMainFrame:WaitForChild("SellModeBtn")
+	self._IsSellModeActive = false
+	self._SellButton = FishMainFrame:WaitForChild("SellBtn")
+	self._CancelButton = FishMainFrame:WaitForChild("CancelBtn")
+	self._ConfirmationUI = self._playersUI.Confirmations.Main.SellConfirmation
+	self._SellText = self._ConfirmationUI.SellText
+	self._SellNotificationText = FishMainFrame:WaitForChild("SellNotification")
+	self._AllCurrentFishes = {}
+	self._CurrentSellingFishes = {}
 	-- State management
 	self._currentTemplate = nil
 	self._viewportFishes = ReplicatedStorage:FindFirstChild(VIEWPORT_FISHES_NAME)
@@ -111,23 +118,42 @@ function FishInventoryController:_CreateViewportCamera(fishModel, viewportFrame)
             - Ensures model remains fully visible
             - Uses PrimaryPart for positioning reference
     ]]
-	local camera = Instance.new("Camera")
-	camera.Parent = viewportFrame
-	viewportFrame.CurrentCamera = camera
+	if fishModel.Name == "ClownFish" or fishModel.Name == "Koi" or fishModel.Name == "YinYangKoi" then
+		local camera = Instance.new("Camera")
+		camera.Parent = viewportFrame
+		viewportFrame.CurrentCamera = camera
 
-	if fishModel.PrimaryPart then
-		local objectSize = fishModel.PrimaryPart.Size
-		local cameraDistance = math.max(objectSize.X, objectSize.Y, objectSize.Z) * CAMERA_DISTANCE_MULTIPLIER
+		if fishModel.PrimaryPart then
+			local objectSize = fishModel.PrimaryPart.Size
+			local cameraDistance = math.max(objectSize.X, objectSize.Y, objectSize.Z) * 0.7
 
-		camera.CFrame = CFrame.new(
-			fishModel.PrimaryPart.Position + Vector3.new(0, 0, cameraDistance),
-			fishModel.PrimaryPart.Position
-		)
+			camera.CFrame = CFrame.new(
+				fishModel.PrimaryPart.Position + Vector3.new(0, 0, cameraDistance),
+				fishModel.PrimaryPart.Position
+			)
+		else
+			warn("Fish model missing PrimaryPart: " .. fishModel.Name)
+		end
+
+		return camera
 	else
-		warn("Fish model missing PrimaryPart: " .. fishModel.Name)
-	end
+		local camera = Instance.new("Camera")
+		camera.Parent = viewportFrame
+		viewportFrame.CurrentCamera = camera
 
-	return camera
+		if fishModel.PrimaryPart then
+			local objectSize = fishModel.PrimaryPart.Size
+			local cameraDistance = math.max(objectSize.X, objectSize.Y, objectSize.Z) * 1.2
+
+			local cameraPosition = fishModel.PrimaryPart.Position + Vector3.new(-0.5, 0, cameraDistance)
+
+			camera.CFrame = CFrame.new(cameraPosition, fishModel.PrimaryPart.Position)
+		else
+			warn("Fish model missing PrimaryPart: " .. fishModel.Name)
+		end
+
+		return camera
+	end
 end
 
 function FishInventoryController:_SetupFishViewport(viewportFrame, fishName)
@@ -219,14 +245,47 @@ function FishInventoryController:_CreateFishTemplate(fishData)
 
 	-- Interaction setup
 	template.Click.MouseButton1Click:Connect(function()
-		if self._currentTemplate then
-			self._currentTemplate.SelectionHighlight.Visible = false
+		if not self._IsSellModeActive then
+			-- Normal mode: select and show details.
+			if self._currentTemplate then
+				self._currentTemplate.SelectionHighlight.Visible = false
+			end
+
+			self._currentTemplate = template
+			self:_ShowFishDetails(template)
+			template.SelectionHighlight.Visible = true
+		else
+			-- Sell mode active:
+			-- Toggle the SellMode visibility for this fish.
+			template.SellMode.Visible = not template.SellMode.Visible
+
+			-- Rebuild the sellable fishes list from scratch based on UI state.
+			local sellableFishes = {}
+			for _, child in ipairs(self._fishesScrollingFrame:GetChildren()) do
+				if child:IsA("Frame") and child.Name == FISH_TEMPLATE_NAME then
+					if child.SellMode.Visible then
+						local fishID = child.FishID.Value
+						-- Look up the fish data from the full list.
+						for _, fish in ipairs(self._AllCurrentFishes) do
+							if fish.ID == fishID then
+								table.insert(sellableFishes, fish)
+								break -- Found the matching fish data.
+							end
+						end
+					end
+				end
+			end
+
+			-- Update the current selling fishes table.
+			self._CurrentSellingFishes = sellableFishes
+			print(self._CurrentSellingFishes)
+			-- Calculate and update the total sell value.
+			local totalValue = 0
+			for _, fish in ipairs(self._CurrentSellingFishes) do
+				totalValue = totalValue + fish.sellPrice
+			end
+			self._SellButton.CurrencyAmountText.Text = tostring(totalValue) .. "$"
 		end
-
-		self._currentTemplate = template
-
-		self:_ShowFishDetails(template)
-		template.SelectionHighlight.Visible = true
 	end)
 
 	return template
@@ -339,6 +398,7 @@ function FishInventoryController:_PopulateInventory()
     ]]
 	local StateController = Knit.GetController("StateController")
 	local fishDataList = StateController.GetData().fishes
+	self._AllCurrentFishes = fishDataList
 	print(fishDataList)
 	self:_ClearInventory()
 
@@ -354,6 +414,122 @@ function FishInventoryController:_PopulateInventoryAfterStarted(newFishes)
 	end
 end
 
+-- Helper to set sell mode visibility for all fish templates.
+function FishInventoryController:_setAllSellModes(isVisible)
+	for _, child in ipairs(self._fishesScrollingFrame:GetChildren()) do
+		if child:IsA("Frame") and child.Name == FISH_TEMPLATE_NAME then
+			child.SellMode.Visible = isVisible
+		end
+	end
+end
+
+-- Helper to calculate the total sell price of a given fish list.
+function FishInventoryController:_calculateTotalSellValue(fishList)
+	local total = 0
+	for _, fish in ipairs(fishList) do
+		total = total + fish.sellPrice
+	end
+	return total
+end
+
+-- Activates sell mode: updates state and UI accordingly.
+function FishInventoryController:_activateSellMode()
+	self._IsSellModeActive = true
+	self._SellButton.Visible = true
+	self._CancelButton.Visible = true
+	self:_setAllSellModes(true)
+	-- Rebuild the sellable fishes list from scratch based on UI state.
+	local sellableFishes = {}
+	for _, child in ipairs(self._fishesScrollingFrame:GetChildren()) do
+		if child:IsA("Frame") and child.Name == FISH_TEMPLATE_NAME then
+			if child.SellMode.Visible then
+				local fishID = child.FishID.Value
+				-- Look up the fish data from the full list.
+				for _, fish in ipairs(self._AllCurrentFishes) do
+					if fish.ID == fishID then
+						table.insert(sellableFishes, fish)
+						break -- Found the matching fish data.
+					end
+				end
+			end
+		end
+	end
+	-- Update the current selling fishes table.
+	self._CurrentSellingFishes = sellableFishes
+
+	local totalValue = self:_calculateTotalSellValue(self._AllCurrentFishes)
+	self._SellButton.CurrencyAmountText.Text = tostring(totalValue) .. "$"
+end
+
+-- Deactivates sell mode: resets state and hides sell mode UI.
+function FishInventoryController:_deactivateSellMode()
+	self._IsSellModeActive = false
+	self._SellButton.Visible = false
+	self._CancelButton.Visible = false
+	self:_setAllSellModes(false)
+
+	local totalValue = self:_calculateTotalSellValue(self._AllCurrentFishes)
+	self._SellButton.CurrencyAmountText.Text = tostring(totalValue) .. "$"
+end
+
+-- Sets up the confirmation UI handlers for selling.
+function FishInventoryController:_setupConfirmationHandlers()
+	self._ConfirmationUI.Buttons.Sell.MouseButton1Click:Connect(function()
+		self._ConfirmationUI.Visible = false
+		local SellService = Knit.GetService("SellingService")
+		SellService.SellFromSellMode:Fire(self._CurrentSellingFishes)
+		local totalValue = self:_calculateTotalSellValue(self._CurrentSellingFishes)
+		self._SellNotificationText.Text = "Sold "
+			.. "(x"
+			.. #self._CurrentSellingFishes
+			.. ")"
+			.. " Fishes For "
+			.. totalValue
+			.. " Gold!"
+		self._SellNotificationText.Visible = true
+		task.wait(1)
+		self._SellNotificationText.Visible = false
+		self:_deactivateSellMode()
+	end)
+
+	self._ConfirmationUI.Buttons.Cancel.MouseButton1Click:Connect(function()
+		self._ConfirmationUI.Visible = false
+		self:_deactivateSellMode()
+	end)
+end
+
+-- Sets up the sell button event handler.
+function FishInventoryController:_setupSellButtonHandler()
+	self._SellButton.MouseButton1Click:Connect(function()
+		local totalValue = self:_calculateTotalSellValue(self._CurrentSellingFishes)
+		self._ConfirmationUI.Visible = true
+		self._SellText.Text = "Sell " .. #self._CurrentSellingFishes .. " fish for " .. totalValue .. " Gold?"
+		self:_setupConfirmationHandlers()
+	end)
+end
+
+-- Sets up the cancel button event handler.
+function FishInventoryController:_setupCancelButtonHandler()
+	self._CancelButton.MouseButton1Click:Connect(function()
+		self:_deactivateSellMode()
+	end)
+end
+
+-- Main handler for toggling sell mode.
+function FishInventoryController:_handleSellMode()
+	print("Initiate Sell Mode..")
+
+	if not self._IsSellModeActive then
+		self:_activateSellMode()
+	else
+		self:_deactivateSellMode()
+	end
+
+	-- Register button event handlers.
+	self:_setupSellButtonHandler()
+	self:_setupCancelButtonHandler()
+end
+
 function FishInventoryController:KnitStart()
 	-- Main initialization sequence
 	self:_InitializeReferences()
@@ -367,6 +543,7 @@ function FishInventoryController:KnitStart()
 	DataService.UpdateFishes:Connect(function(newFishes)
 		print(newFishes)
 		self:_PopulateInventoryAfterStarted(newFishes)
+		self._AllCurrentFishes = newFishes
 	end)
 
 	-- UI event bindings
@@ -377,6 +554,9 @@ function FishInventoryController:KnitStart()
 	local buttonHolder = self._fishDetailsFrame.ButtonHolder
 	buttonHolder.Equip.MouseButton1Click:Connect(function()
 		self:_HandleEquipFish()
+	end)
+	self._sellModeButton.MouseButton1Click:Connect(function()
+		self:_handleSellMode()
 	end)
 	buttonHolder.Lock.MouseButton1Click:Connect(function()
 		local InventoryService = Knit.GetService("InventoryService")
