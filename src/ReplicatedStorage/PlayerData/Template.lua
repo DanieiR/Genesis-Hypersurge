@@ -17,6 +17,11 @@ local Template = {
 	BasicRod = false,
 	TestingRod = true,
 	Makeshift_Rod = true,
+	Stats = {
+		Power = 1,
+		Luck = 1,
+		Speed = 1,
+	},
 }
 
 export type PlayerData = typeof(Template)

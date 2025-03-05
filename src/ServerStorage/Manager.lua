@@ -227,6 +227,94 @@ function Manager.GiveRod(player, RodName)
 	end
 	DataService.Client.RodUpdate:Fire(player, RodName)
 end
+function Manager.AdjustPower(player: Player, amount: number)
+	local profile = Manager.Profiles[player]
+	if not profile then
+		return
+	end
+	if not profile.Data.Stats then
+		profile.Data.Stats = {
+			Power = 10,
+			Luck = 10,
+			Speed = 10,
+		}
+	end
+
+	local newValue = math.clamp(profile.Data.Stats.Power + amount, 0, 100)
+
+	if newValue ~= profile.Data.Stats.Power then
+		profile.Data.Stats.Power = newValue
+		DataService.Client.UpdateStats:Fire(player, "Power", newValue)
+	end
+
+	return newValue
+end
+
+function Manager.AdjustLuck(player: Player, amount: number)
+	local profile = Manager.Profiles[player]
+	if not profile then
+		return
+	end
+
+	if not profile.Data.Stats then
+		profile.Data.Stats = {
+			Power = 10,
+			Luck = 10,
+			Speed = 10,
+		}
+	end
+
+	local newValue = math.clamp(profile.Data.Stats.Luck + amount, 0, 100)
+
+	if newValue ~= profile.Data.Stats.Luck then
+		profile.Data.Stats.Luck = newValue
+		DataService.Client.UpdateStats:Fire(player, "Luck", newValue)
+	end
+
+	return newValue
+end
+
+function Manager.AdjustSpeed(player: Player, amount: number)
+	local profile = Manager.Profiles[player]
+	if not profile then
+		return
+	end
+
+	if not profile.Data.Stats then
+		profile.Data.Stats = {
+			Power = 10,
+			Luck = 10,
+			Speed = 10,
+		}
+	end
+
+	local newValue = math.clamp(profile.Data.Stats.Speed + amount, 0, 100)
+
+	if newValue ~= profile.Data.Stats.Speed then
+		profile.Data.Stats.Speed = newValue
+		DataService.Client.UpdateStats:Fire(player, "Speed", newValue)
+	end
+
+	return newValue
+end
+
+-- Helper function to get a player's stats
+function Manager.GetPlayerStats(player: Player)
+	local profile = Manager.Profiles[player]
+	if not profile then
+		return nil
+	end
+
+	if not profile.Data.Stats then
+		profile.Data.Stats = {
+			Power = 10,
+			Luck = 10,
+			Speed = 10,
+		}
+	end
+
+	return profile.Data.Stats
+end
 local function GetAllData(player: Player)
 	local profile = Manager.Profiles[player]
 	if not profile then

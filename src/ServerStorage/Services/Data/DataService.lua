@@ -17,6 +17,7 @@ local DataService = Knit.CreateService({
 		LevelUp = Knit.CreateSignal(),
 		ResetData = Knit.CreateSignal(),
 		RodUpdate = Knit.CreateSignal(),
+		UpdateStats = Knit.CreateSignal(),
 	},
 })
 local ProfileTemplate = require(ReplicatedStorage.Source.PlayerData.Template)

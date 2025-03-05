@@ -34,12 +34,12 @@ function FishingService:StartFishing(player)
 	end
 
 	-- Create DEEP COPY of fish template
-	local baseFish = RNGModule.GetRandomFish()
+	local baseFish = RNGModule.GetRandomFish(player)
 	local caughtFish = table.clone(baseFish)
 	caughtFish.ID = self:GenerateNumericFishId()
 	caughtFish.equipped = false
 	caughtFish.locked = false
-	caughtFish.weight = math.random(caughtFish.weight, caughtFish.weight + 10)
+
 	-- Store fish in temporary table
 	local tempFishStore = { caughtFish }
 

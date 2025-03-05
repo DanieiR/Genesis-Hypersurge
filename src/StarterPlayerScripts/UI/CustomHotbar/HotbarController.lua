@@ -6,6 +6,9 @@ local UserInputService = game:GetService("UserInputService")
 
 local HotbarController = Knit.CreateController({ Name = "HotbarController" })
 
+-- Constants
+local MAX_SLOTS = 5 -- Always show 5 slots regardless of tool count
+
 ------------------------------------------------------------
 -- Utility: Create a viewport preview for a tool in a slot.
 ------------------------------------------------------------
@@ -55,24 +58,88 @@ end
 -- Core HotbarController Methods
 ------------------------------------------------------------
 
--- Builds a stable ordered tool list:
--- Slot 1 is the equipped tool (if any) and slots 2+ are tools from the Backpack.
-function HotbarController:_GetOrderedToolList()
-	local tools = {}
+-- Gets all tools from character and backpack, preserving order
+function HotbarController:_GetAllToolsByName()
+	local toolsByName = {}
+	local equippedToolName = nil
+
+	-- First check character for equipped tool
 	local character = self._player.Character
-	local equippedTool = nil
 	if character then
-		equippedTool = character:FindFirstChildWhichIsA("Tool")
+		local equippedTool = character:FindFirstChildWhichIsA("Tool")
+		if equippedTool then
+			toolsByName[equippedTool.Name] = equippedTool
+			equippedToolName = equippedTool.Name
+		end
 	end
-	if equippedTool then
-		table.insert(tools, equippedTool)
-	end
+
+	-- Then check backpack for unequipped tools
 	local backpack = self._player:WaitForChild("Backpack")
 	for _, tool in ipairs(backpack:GetChildren()) do
 		if tool:IsA("Tool") then
-			table.insert(tools, tool)
+			toolsByName[tool.Name] = tool
 		end
 	end
+
+	return toolsByName, equippedToolName
+end
+
+-- Builds a stable ordered tool list:
+-- Uses the tool name ordering system to maintain consistent positions
+function HotbarController:_GetOrderedToolList()
+	local tools = {}
+	local toolsByName, equippedToolName = self:_GetAllToolsByName()
+
+	-- If we don't have a saved order or this is first load, create initial order
+	if not self._savedToolOrder or #self._savedToolOrder == 0 then
+		self._savedToolOrder = {}
+
+		-- Put equipped tool first if any
+		if equippedToolName then
+			table.insert(self._savedToolOrder, equippedToolName)
+		end
+
+		-- Add remaining tools
+		for toolName, _ in pairs(toolsByName) do
+			if toolName ~= equippedToolName then
+				table.insert(self._savedToolOrder, toolName)
+			end
+		end
+	else
+		-- Update saved order to include any new tools
+		local foundTools = {}
+
+		-- First pass: Check which tools from saved order still exist
+		for i, toolName in ipairs(self._savedToolOrder) do
+			if toolsByName[toolName] then
+				foundTools[toolName] = true
+			end
+		end
+
+		-- Second pass: Add any new tools not in the saved order
+		for toolName, _ in pairs(toolsByName) do
+			if not foundTools[toolName] then
+				table.insert(self._savedToolOrder, toolName)
+				foundTools[toolName] = true
+			end
+		end
+
+		-- Third pass: Remove any tools from saved order that no longer exist
+		for i = #self._savedToolOrder, 1, -1 do
+			local toolName = self._savedToolOrder[i]
+			if not toolsByName[toolName] then
+				table.remove(self._savedToolOrder, i)
+			end
+		end
+	end
+
+	-- Build final ordered tools array based on saved order
+	for _, toolName in ipairs(self._savedToolOrder) do
+		if toolsByName[toolName] then
+			table.insert(tools, toolsByName[toolName])
+		end
+	end
+
 	return tools
 end
 
@@ -88,12 +155,14 @@ function HotbarController:_InitializeReferences()
 	self._HotBarTemplate = self._HotBarContainer:WaitForChild("HotBarTemplate")
 	self._ToolNameText = self._HotBarTemplate:WaitForChild("ToolName")
 	self._ToolNumberText = self._HotBarTemplate:WaitForChild("HotBarNumber"):WaitForChild("NumberText")
-
 	-- Cache the original size of the template slot.
 	self._OriginalSlotSize = self._HotBarTemplate.Size
 
 	-- Table to store active slot UIs (slot 1 is the original template).
 	self._Slots = {}
+
+	-- Initialize tool ordering
+	self._savedToolOrder = {}
 end
 
 -- Disable the default Roblox backpack GUI.
@@ -102,14 +171,18 @@ function HotbarController:_DisableDefaultBackpack()
 end
 
 -- Updates the hotbar slots UI based on our ordered tool list.
+-- Always shows MAX_SLOTS, regardless of how many tools are available.
 -- Slot 1 always uses the original template; additional slots are clones.
 function HotbarController:_UpdateHotbarSlots()
 	local tools = self:_GetOrderedToolList()
 	local slotSpacing = 5
 	local slotWidth = self._OriginalSlotSize.X.Offset
 
-	-- Create or update slots for each tool.
-	for i = 1, #tools do
+	-- Create or update slots for each tool and empty slots up to MAX_SLOTS
+	for i = 1, MAX_SLOTS do
+		local tool = tools[i] -- This will be nil for slots beyond the tool count
+
+		-- Create or get the slot UI element
 		if i == 1 then
 			-- Use the original template for slot 1.
 			if not self._Slots[1] then
@@ -148,33 +221,37 @@ function HotbarController:_UpdateHotbarSlots()
 			numberLabel.Text = tostring(i)
 		end
 
-		-- Update the ToolName label.
+		-- Update the ToolName label and visibility of empty slot icon
 		local toolNameLabel = self._Slots[i]:FindFirstChild("ToolName")
+		local iconImage = self._Slots[i]:FindFirstChild("Icon")
+
 		if toolNameLabel then
-			local tool = tools[i]
-			toolNameLabel.Text = tool and tool.Name or "Empty"
+			if tool then
+				toolNameLabel.Text = tool.Name
+				-- Hide the empty slot icon when a tool is present
+				if iconImage then
+					iconImage.Visible = false
+				end
+			else
+				toolNameLabel.Text = "Empty"
+				-- Show the empty slot icon when no tool is present
+				if iconImage then
+					iconImage.Visible = true
+				end
+			end
 		end
 
 		-- Update the viewport preview.
-		self:_UpdateSlotViewport(self._Slots[i], tools[i])
+		self:_UpdateSlotViewport(self._Slots[i], tool)
 	end
 
-	-- Remove any extra slots if tools were removed.
-	for i = #tools + 1, #self._Slots do
-		if i ~= 1 and self._Slots[i] then
+	-- Remove any extra slots beyond MAX_SLOTS (shouldn't happen but just in case)
+	for i = MAX_SLOTS + 1, #self._Slots do
+		if self._Slots[i] then
 			self._Slots[i]:Destroy()
 			self._Slots[i] = nil
 		end
 	end
-
-	-- Rebuild _Slots as a contiguous array.
-	local newSlots = {}
-	for i = 1, #tools do
-		if self._Slots[i] then
-			table.insert(newSlots, self._Slots[i])
-		end
-	end
-	self._Slots = newSlots
 end
 
 -- Tween a given slot's size.
@@ -207,15 +284,29 @@ function HotbarController:_UpdateEquippedTool()
 
 	for i, slot in ipairs(self._Slots) do
 		local toolNameLabel = slot:FindFirstChild("ToolName")
+		local iconImage = slot:FindFirstChild("Icon")
 		local tool = tools[i]
+
 		if toolNameLabel then
-			toolNameLabel.Text = tool and tool.Name or "Empty"
+			if tool then
+				toolNameLabel.Text = tool.Name
+				if iconImage then
+					iconImage.Visible = false
+				end
+			else
+				toolNameLabel.Text = "Empty"
+				if iconImage then
+					iconImage.Visible = true
+				end
+			end
 		end
 
 		if tool and equippedTool and tool == equippedTool then
 			self:_TweenSlotSize(slot, true)
+			slot.Background.EquippedStroke.Enabled = true
 		else
 			self:_TweenSlotSize(slot, false)
+			slot.Background.EquippedStroke.Enabled = false
 		end
 	end
 end
@@ -224,7 +315,7 @@ end
 function HotbarController:_EquipToolBySlot(slotIndex)
 	local tools = self:_GetOrderedToolList()
 	if slotIndex > #tools then
-		return -- Invalid slot.
+		return -- Invalid slot - no tool available.
 	end
 	local tool = tools[slotIndex]
 	if not tool then

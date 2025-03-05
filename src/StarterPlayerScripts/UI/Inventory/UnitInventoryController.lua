@@ -36,6 +36,7 @@ function UnitInventoryController:_InitializeReferences()
 	self._connections = {} -- Table to store connections
 	self._ButtonHolder = self._UnitDetailsFrame:WaitForChild("ButtonHolder")
 end
+
 function UnitInventoryController:_CreateViewportCamera(unitModel, viewportFrame)
 	local camera = Instance.new("Camera")
 	camera.Parent = viewportFrame
@@ -79,8 +80,9 @@ function UnitInventoryController:_SetupUnitViewport(viewportFrame, unitName)
 
 	self:_CreateViewportCamera(clonedModel, viewportFrame)
 end
+
 function UnitInventoryController:_ShowUnitDetails(template)
-	-- Updates detail panel with selected fish information
+	-- Updates detail panel with selected unit information
 	self._UnitDetailsFrame.FishInfoText.FishName.Text = template.FishName.Text
 	self._UnitDetailsFrame.FishInfoText.Rarity.Text = template.Rarity.Value
 	if template.IsLocked.Value == true then
@@ -100,22 +102,24 @@ end
 function UnitInventoryController:_CreateUnitTemplate(unitData)
 	local template = self._unitTemplate:Clone()
 	template.Parent = self._ScrollingFrameMain
-	--[[
-	if unitData.locked == true then
+
+	-- Set lock and equip states based on unit data
+	if unitData.isLocked == true then
 		template.Locked.Visible = true
 		template.IsLocked.Value = true
 	else
 		template.Locked.Visible = false
 		template.IsLocked.Value = false
 	end
-	if unitData.equipped == true then
+
+	if unitData.Equipped == true then
 		template.EquippedCheckmark.Visible = true
 		template.IsEquipped.Value = true
 	else
 		template.EquippedCheckmark.Visible = false
 		template.IsEquipped.Value = false
-	end]]
-	--
+	end
+
 	template.Visible = true
 
 	-- Data binding
@@ -181,6 +185,7 @@ function UnitInventoryController:_ClearInventory()
 		worldModel:Destroy()
 	end
 end
+
 function UnitInventoryController:_PopulateInventory()
 	local StateController = Knit.GetController("StateController")
 	local unitDataList = StateController.GetData().units
@@ -192,14 +197,16 @@ function UnitInventoryController:_PopulateInventory()
 		self:_CreateUnitTemplate(unitData)
 	end
 end
+
 function UnitInventoryController:_PopulateInventoryAfterStarted(newUnits)
 	local UnitDataList = newUnits
 	self._AllCurrentUnits = UnitDataList
 	self:_ClearInventory()
-	for _, fishData in ipairs(UnitDataList) do
-		self:_CreateUnitTemplate(fishData)
+	for _, unitData in ipairs(UnitDataList) do
+		self:_CreateUnitTemplate(unitData)
 	end
 end
+
 function UnitInventoryController:_setAllSellModes(isVisible)
 	for _, child in ipairs(self._ScrollingFrameMain:GetChildren()) do
 		if child:IsA("Frame") and child.Name == UNIT_TEMPLATE_NAME then
@@ -207,6 +214,7 @@ function UnitInventoryController:_setAllSellModes(isVisible)
 		end
 	end
 end
+
 function UnitInventoryController:_calculateTotalSellValue(unitList)
 	local total = 0
 	for _, Unit in ipairs(unitList) do
@@ -223,17 +231,23 @@ function UnitInventoryController:_activateSellMode()
 	local sellableUnit = {}
 	for _, child in ipairs(self._ScrollingFrameMain:GetChildren()) do
 		if child:IsA("Frame") and child.Name == UNIT_TEMPLATE_NAME then
-			local UnitID = child.FishID.Value
-			for _, Unit in ipairs(self._AllCurrentUnits) do
-				if Unit.ID == UnitID then
-					table.insert(sellableUnit, Unit)
-					break
+			-- Only include unlocked units in sell mode
+			if not child.IsLocked.Value then
+				local UnitID = child.FishID.Value
+				for _, Unit in ipairs(self._AllCurrentUnits) do
+					if Unit.ID == UnitID then
+						table.insert(sellableUnit, Unit)
+						break
+					end
 				end
+			else
+				-- Hide sell mode for locked units
+				child.SellMode.Visible = false
 			end
 		end
 	end
 	self._CurrentSellingUnits = sellableUnit
-	local totalValue = self:_calculateTotalSellValue(self._AllCurrentUnits)
+	local totalValue = self:_calculateTotalSellValue(sellableUnit)
 	self._SellButton.CurrencyAmountText.Text = tostring(totalValue) .. "$"
 end
 
@@ -241,10 +255,11 @@ function UnitInventoryController:_deactivateSellMode()
 	self._IsSellModeActive = false
 	self._SellButton.Visible = false
 	self._CancelButton.Visible = false
-	local totalValue = self:_calculateTotalSellValue(self._AllCurrentUnits)
-	self._SellButton.CurrencyAmountText.Text = tostring(totalValue) .. "$"
 	self:_setAllSellModes(false)
+	self._CurrentSellingUnits = {}
+	self._SellButton.CurrencyAmountText.Text = "0$"
 end
+
 function UnitInventoryController:_setupConfirmationHandlers()
 	if self._confirmationHandlers then
 		for _, conn in ipairs(self._confirmationHandlers) do
@@ -284,19 +299,25 @@ function UnitInventoryController:_setupSellButtonHandler()
 		self._sellButtonConn:Disconnect()
 	end
 	self._sellButtonConn = self._SellButton.MouseButton1Click:Connect(function()
-		local totalValue = self:_calculateTotalSellValue(self._CurrentSellingUnits)
-		self._ConfirmationUI.Visible = true
-		self._SellText.Text = "Sell " .. #self._CurrentSellingUnits .. " units for " .. totalValue .. " Gold?"
-		self:_setupConfirmationHandlers()
+		if #self._CurrentSellingUnits > 0 then
+			local totalValue = self:_calculateTotalSellValue(self._CurrentSellingUnits)
+			self._ConfirmationUI.Visible = true
+			self._SellText.Text = "Sell " .. #self._CurrentSellingUnits .. " units for " .. totalValue .. " Gold?"
+			self:_setupConfirmationHandlers()
+		end
 	end)
 	table.insert(self._connections, self._sellButtonConn)
 end
 
 -- Sets up the cancel button event handler.
 function UnitInventoryController:_setupCancelButtonHandler()
-	self._CancelButton.MouseButton1Click:Connect(function()
+	if self._cancelButtonConn then
+		self._cancelButtonConn:Disconnect()
+	end
+	self._cancelButtonConn = self._CancelButton.MouseButton1Click:Connect(function()
 		self:_deactivateSellMode()
 	end)
+	table.insert(self._connections, self._cancelButtonConn)
 end
 
 function UnitInventoryController:_handleSellMode()
@@ -316,6 +337,8 @@ function UnitInventoryController:_handleEquip()
 	local EquipService = Knit.GetService("EquipService")
 	print(self._UnitDetailsFrame.FishInfoText.FishName.Text)
 	EquipService.equipUnit:Fire(self._currentTemplate.FishID.Value, self._UnitDetailsFrame.FishInfoText.FishName.Text)
+
+	local connection
 	connection = EquipService.equipUnit:Connect(function()
 		for _, template in ipairs(self._ScrollingFrameMain:GetChildren()) do
 			if template:IsA("Frame") and template.Name == UNIT_TEMPLATE_NAME then
@@ -339,20 +362,72 @@ function UnitInventoryController:_handleEquip()
 	end)
 end
 
+--[[
+    Handle locking/unlocking of units
+    - Toggles the lock state on the selected unit
+    - Updates UI to reflect changes
+    - Sends lock state to server
+]]
+function UnitInventoryController:_handleLock()
+	if not self._currentTemplate then
+		return
+	end
+
+	-- Create an InventoryService if it doesn't exist already
+	local InventoryService = Knit.GetService("InventoryService")
+
+	-- Toggle the lock state
+	local unitID = self._currentTemplate.FishID.Value
+	local newLockState = not self._currentTemplate.IsLocked.Value
+
+	-- Update the template's lock state
+	self._currentTemplate.IsLocked.Value = newLockState
+	self._currentTemplate.Locked.Visible = newLockState
+
+	-- Update button text in details panel
+	if newLockState then
+		self._UnitDetailsFrame.ButtonHolder.Lock.BtnText.Text = "LOCKED"
+	else
+		self._UnitDetailsFrame.ButtonHolder.Lock.BtnText.Text = "LOCK"
+	end
+
+	-- Update the unit's lock state in the AllCurrentUnits list
+	for i, unit in ipairs(self._AllCurrentUnits) do
+		if unit.ID == unitID then
+			self._AllCurrentUnits[i].isLocked = newLockState
+			break
+		end
+	end
+
+	-- Send lock state to server
+	InventoryService.SetLockState:Fire(unitID, newLockState)
+
+	print("Unit " .. unitID .. " lock state set to: " .. tostring(newLockState))
+end
+
 function UnitInventoryController:KnitStart()
 	-- Main initialization sequence
 	self:_InitializeReferences()
 	task.wait(5)
 	self:_PopulateInventory()
+
+	-- Set up data update listeners
 	local DataService = Knit.GetService("DataService")
 	DataService.UpdateUnits:Connect(function(newUnits)
 		self:_PopulateInventoryAfterStarted(newUnits)
 	end)
+
+	-- Set up button click handlers
 	self._sellModeButton.MouseButton1Click:Connect(function()
 		self:_handleSellMode()
 	end)
+
 	self._ButtonHolder.Equip.MouseButton1Click:Connect(function()
 		self:_handleEquip()
+	end)
+
+	self._ButtonHolder.Lock.MouseButton1Click:Connect(function()
+		self:_handleLock()
 	end)
 end
 
